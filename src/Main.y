@@ -45,45 +45,68 @@ import System.Environment
 
 %%
 
-program:                        declarations                              { $1 }
+program:                        declarations                                        { $1 }
                                 
-declarations:                   declaration declarations                  { $1 : $2 }
-                                |                                         { [] }
+declarations:                   declaration declarations                            { $1 : $2 }
+                                |                                                   { [] }
 
-declaration:                    var_declaration                           { $1 }
-                                | fun_declaration                         { $1 }
+declaration:                    var_declaration                                     { $1 }
+                                | fun_definition                                    { $1 }
 
-var_declaration:                type name TSemicolon                      { VarDeclaration $1 $2 }
+type:                           TInt                                                { Atom IntType }
+                                | TChar                                             { Atom CharType}
 
-fun_declaration:                type name TLpar formal_pars TRpar TSemicolon   { FunDeclaration $1 $2 $4 }
+var_declaration:                type name TSemicolon                                { VarDeclaration $1 $2 }
 
-formal_pars:                    formal_pars_tail                          { $1 }
-                                |                                         { [] }
+var_declarations:               var_declaration var_declarations                    { $1 : $2 }
+                                |                                                   { [] }
+
+fun_definition:                type name TLpar formal_pars TRpar block              { FunDeclaration $1 $2 $4 $6 }
+
+formal_pars:                    formal_pars_tail                                    { $1 }
+                                |                                                   { [] }
                                 
                                 
-formal_pars_tail:               formal_par                                { [$1] }
-                                | formal_par TComma formal_pars_tail       { $1 : $3 }
+formal_pars_tail:               formal_par                                          { [$1] }
+                                | formal_par TComma formal_pars_tail                { $1 : $3 }
 
-formal_par:                     type name                                 { VarDeclaration $1 $2 }
+formal_par:                     type name                                           { VarDeclaration $1 $2 }
 
-type:                           TInt                                       { Atom IntType }
-                                | TChar                                    { Atom CharType}
+block:                          TLbrace var_declarations statements TRbrace         { Body $2 $3 }
+
+statement:                      name TAssign                                        { SAssign $1 }
+
+statements:                     statement statement_semicolon                       { $1 : $2 }
+                                |                                                   { [] }
+
+statement_semicolon:            TSemicolon statements                               { $2 }
+                                |                                                   { [] }
 
 {
 
-data AtomicType = IntType
-                  | CharType
-                  deriving (Show, Eq)
+type Name =           String
 
-data Type = Atom AtomicType
-            | ArrayType Int Type
-            deriving (Show, Eq)
+data AtomicType =     IntType
+                      | CharType
+                      deriving (Show, Eq)
 
-data Declaration = VarDeclaration Type String
-                   | FunDeclaration Type String [Declaration]
-                   deriving (Show, Eq)
+data Type =           Atom AtomicType
+                      | ArrayType Int Type
+                      deriving (Show, Eq)
 
-type Declarations = [Declaration]
+data Declaration =    VarDeclaration Type Name
+                      | FunDeclaration Type Name Declarations Body
+                      deriving (Show, Eq)
+
+type Declarations =   [Declaration]
+
+data Statement =      SAssign Name
+                      deriving (Show, Eq)
+
+type Statements =     [Statement]
+
+data Body =           Body Declarations Statements
+                      deriving (Show, Eq)
 
 
 parseError :: [Token] -> a
