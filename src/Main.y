@@ -46,6 +46,13 @@ import System.Environment
       TNumber                   { TNumber number }
       TEnd                      { TEnd           }
 
+%left TAssign
+%left TEqual TNequal
+%left TGreater TLess
+%left TPlus TMinus 
+%left TTimes TDivide
+%right TLength TNot
+
 %%
 
 program:                        declarations                                        { $1 }
@@ -81,7 +88,6 @@ statement:                      lexp TAssign exp                                
                                 | TReturn exp                                       { ReturnStmt $2 }
                                 | TRead lexp                                        { ReadStmt $2 }
                                 | TWrite exp                                        { WriteStmt $2 }
-                                | TWhile marker cond marker block goto marker       { WhileStmt $2 $3 $4 $5 $7 } 
 
 statements:                     statement statement_semicolon                       { $1 : $2 }
                                 |                                                   { [] }
@@ -94,13 +100,13 @@ lexp:                           TName                                           
 
 exp:                            lexp                                                { $1 }
                                 | binopExp                                          { $1 }
-                                | unopExp                                           { $1}
+                                | unopExp                                           { $1 }
                                 | TLpar exp TRpar                                   { $2 }
                                 | TName TLpar pars TRpar                            { FunctionAppExp $1 $3 }
                                 | TLength lexp                                      { LengthExp $2 }
                                 | TNumber                                           { let (TNumber n) = $1 in NumberExp n }
 
-binopExp:                       exp binOperator exp                                 { BinaryExp $2 $1 $3 }
+binopExp:                       exp TPlus exp                                       { BinaryExp PlusOp $1 $3 }
 
 binOperator:                    TPlus                                               { PlusOp }
                                 | TMinus                                            { MinusOp }
@@ -113,19 +119,12 @@ binOperator:                    TPlus                                           
                                 | TLess                                             { LessOp }
                                 | TLessEqual                                        { LessEqualOp }
 
-unopExp:                        unOperator exp                                      { UnaryExp $1 $2}
+unopExp:                        TNot exp                                            { UnaryExp NotOp $2}
 
-unOperator:                     TMinus                                              { MinusUnOp }
-                                | TNot                                              { NotOp }
+unOperator:                     TNot                                                { NotOp }
 
 pars:                           exp pars                                            { $1 : $2 }
                                 |                                                   { [] }
-
-marker:                                                                             { Marker nilLocation }
-
-goto:                                                                               { Goto nilLocation }
-
-cond:                           TLpar exp TRpar                                     { $2 }
 
 {
 
@@ -252,7 +251,7 @@ lexer ('-':cs)          =     TMinus : lexer cs
 lexer ('*':cs)          =     TTimes : lexer cs
 lexer ('/':cs)          =     TDivide : lexer cs
 lexer (';':cs)          =     TSemicolon : lexer cs
-lexer ('!':cs)          =     TNot : lexer cs
+lexer ('!' : 'x' :cs)          =     TNot : lexer cs
 lexer ('(':cs)          =     TLpar : lexer cs
 lexer (')':cs)          =     TRpar : lexer cs
 lexer ('{':cs)          =     TLbrace : lexer cs
