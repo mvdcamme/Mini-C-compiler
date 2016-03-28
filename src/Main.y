@@ -104,7 +104,7 @@ exp:                            lexp                                            
                                 | TLpar exp TRpar                                   { $2 }
                                 | TName TLpar pars TRpar                            { FunctionAppExp $1 $3 }
                                 | TLength lexp                                      { LengthExp $2 }
-                                | TNumber                                           { let (TNumber n) = $1 in NumberExp n }
+                                | TNumber                                           { NumberExp $ number $1 }
 
 binopExp:                       exp TPlus exp                                       { BinaryExp PlusOp $1 $3 }
 
@@ -123,8 +123,11 @@ unopExp:                        TNot exp                                        
 
 unOperator:                     TNot                                                { NotOp }
 
-pars:                           exp pars                                            { $1 : $2 }
+pars:                           parTail                                             { $1 }
                                 |                                                   { [] }
+
+parTail:                        exp                                                 { [$1] }
+                                | exp TComma parTail                                { $1 : $3 }
 
 {
 
