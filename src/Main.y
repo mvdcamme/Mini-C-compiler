@@ -48,8 +48,8 @@ import System.Environment
 
 %left TAssign
 %left TEqual TNequal
-%left TGreater TLess
-%left TPlus TMinus 
+%left TGreater TGreaterEqual TLess TLessEqual
+%left TPlus TMinus
 %left TTimes TDivide
 %right TLength TNot
 
@@ -107,21 +107,17 @@ exp:                            lexp                                            
                                 | TNumber                                           { NumberExp $ number $1 }
 
 binopExp:                       exp TPlus exp                                       { BinaryExp PlusOp $1 $3 }
-
-binOperator:                    TPlus                                               { PlusOp }
-                                | TMinus                                            { MinusOp }
-                                | TTimes                                            { TimesOp }
-                                | TDivide                                           { DivideOp }
-                                | TEqual                                            { EqualOp }
-                                | TNequal                                           { NequalOp }
-                                | TGreater                                          { GreaterOp }
-                                | TGreaterEqual                                     { GreaterEqualOp }
-                                | TLess                                             { LessOp }
-                                | TLessEqual                                        { LessEqualOp }
+                                | exp TMinus exp                                    { BinaryExp MinusOp $1 $3 }
+                                | exp TTimes exp                                    { BinaryExp TimesOp $1 $3 }
+                                | exp TDivide exp                                   { BinaryExp DivideOp $1 $3 }
+                                | exp TEqual exp                                    { BinaryExp EqualOp $1 $3 }
+                                | exp TNequal exp                                   { BinaryExp NequalOp $1 $3 }
+                                | exp TGreater exp                                  { BinaryExp GreaterOp $1 $3 }
+                                | exp TGreaterEqual exp                             { BinaryExp GreaterEqualOp $1 $3 }
+                                | exp TLess exp                                     { BinaryExp LessOp $1 $3 }
+                                | exp TLessEqual exp                                { BinaryExp LessEqualOp $1 $3 }
 
 unopExp:                        TNot exp                                            { UnaryExp NotOp $2}
-
-unOperator:                     TNot                                                { NotOp }
 
 pars:                           parTail                                             { $1 }
                                 |                                                   { [] }
