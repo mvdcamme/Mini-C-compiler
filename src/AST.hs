@@ -1,14 +1,8 @@
 module AST where
 
+        import Type
+
         type Name =                     String
-
-        data AtomicType =               IntType
-                                        | CharType
-                                        deriving (Show, Eq)
-
-        data Type =                     Atom AtomicType
-                                        | ArrayType Int Type
-                                        deriving (Show, Eq)
 
         data Declaration =              VarDeclaration Type Name
                                         | FunDeclaration Type Name Declarations Body

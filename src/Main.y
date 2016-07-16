@@ -6,6 +6,7 @@ import Debug.Trace
 import System.Environment
 
 import AST
+import Type
 }
 
 %name parser
