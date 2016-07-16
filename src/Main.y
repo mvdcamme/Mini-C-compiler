@@ -7,6 +7,7 @@ import System.Environment
 
 import AST
 import Type
+import TypeChecking
 }
 
 %name parser
