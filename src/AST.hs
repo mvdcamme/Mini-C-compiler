@@ -17,6 +17,8 @@ module AST where
         type Declarations =             [Declaration]
 
         data Statement =                AssignStmt Expression Expression
+                                        | BlockStmt Body
+                                        | ExpStmt Expression 
                                         | ReturnStmt Expression
                                         | ReadStmt Expression
                                         | WriteStmt Expression

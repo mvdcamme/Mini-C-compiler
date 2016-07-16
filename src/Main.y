@@ -90,6 +90,8 @@ statement:                      lexp TAssign exp                                
                                 | TReturn exp                                       { ReturnStmt $2 }
                                 | TRead lexp                                        { ReadStmt $2 }
                                 | TWrite exp                                        { WriteStmt $2 }
+                                | block                                             { BlockStmt $1 }
+                                | exp                                               { ExpStmt $1 }
 
 statements:                     statement statement_semicolon                       { $1 : $2 }
                                 |                                                   { [] }
@@ -104,9 +106,11 @@ exp:                            lexp                                            
                                 | binopExp                                          { $1 }
                                 | unopExp                                           { $1 }
                                 | TLpar exp TRpar                                   { $2 }
-                                | TName TLpar pars TRpar                            { FunctionAppExp $1 $3 }
+                                | funCallExp                                        { $1 }
                                 | TLength lexp                                      { LengthExp $2 }
                                 | TNumber                                           { NumberExp $ number $1 }
+
+funCallExp:                     TName TLpar pars TRpar                              { FunctionAppExp $1 $3 }
 
 binopExp:                       exp TPlus exp                                       { BinaryExp PlusOp $1 $3 }
                                 | exp TMinus exp                                    { BinaryExp MinusOp $1 $3 }
