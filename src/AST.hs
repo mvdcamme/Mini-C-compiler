@@ -10,12 +10,12 @@ module AST where
 
     type Declarations =             [Declaration]
 
-    data Statement =                AssignStmt Expression Expression
+    data Statement =                AssignStmt LeftExpression Expression
                                     | BlockStmt Body
                                     | ExpStmt Expression 
                                     | ReturnStmt Expression
-                                    | ReadStmt Expression
-                                    | WriteStmt Expression
+                                    | ReadStmt LeftExpression
+                                    | WriteStmt LeftExpression
                                     | WhileStmt Marker Expression Marker Body Marker
                                     deriving (Show, Eq)
 
@@ -24,13 +24,17 @@ module AST where
     data Body =                     Body Declarations Statements
                                     deriving (Show, Eq)
 
-    data Expression =               VariableRefExp Name
+    data LeftExpression =           VariableRefExp Name
                                     | ArrayRefExp Expression Expression
+                                    deriving (Show, Eq) 
+
+    data Expression =               LeftExp LeftExpression
                                     | BinaryExp BinOperator Expression Expression
                                     | UnaryExp UnOperator Expression
                                     | FunctionAppExp Name Expressions
                                     | LengthExp Expression
                                     | NumberExp Integer
+                                    | QCharExp Char
                                     deriving (Show, Eq)
 
     type Expressions =              [Expression]

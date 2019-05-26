@@ -48,6 +48,8 @@ import TypeChecking
       TLessEqual                { TLessEqual     }
       TName                     { TName $$       }
       TNumber                   { TNumber number }
+      TQChar                    { TQChar char    }
+      TVoid                     { TVoid          }
       TEnd                      { TEnd           }
 
 %left TAssign
@@ -68,7 +70,8 @@ declaration:                    var_declaration                                 
                                 | fun_definition                                    { $1 }
 
 type:                           TInt                                                { Atom IntType }
-                                | TChar                                             { Atom CharType}
+                                | TChar                                             { Atom CharType }
+                                | TVoid                                             { Atom VoidType }
 
 var_declaration:                type TName TSemicolon                               { VarDeclaration $1 $2 }
 
@@ -91,7 +94,7 @@ block:                          TLbrace var_declarations statements TRbrace     
 statement:                      lexp TAssign exp                                    { AssignStmt $1 $3 }
                                 | TReturn exp                                       { ReturnStmt $2 }
                                 | TRead lexp                                        { ReadStmt $2 }
-                                | TWrite exp                                        { WriteStmt $2 }
+                                | TWrite lexp                                       { WriteStmt $2 }
                                 | block                                             { BlockStmt $1 }
                                 | exp                                               { ExpStmt $1 }
 
@@ -102,15 +105,16 @@ statement_semicolon:            TSemicolon statements                           
                                 |                                                   { [] }
 
 lexp:                           TName                                               { VariableRefExp $1 }
-                                | lexp TLbrack exp TRbrack                          { ArrayRefExp $1 $3 }
+                                | exp TLbrack exp TRbrack                           { ArrayRefExp $1 $3 }
 
-exp:                            lexp                                                { $1 }
+exp:                            lexp                                                { LeftExp $1 }
                                 | binopExp                                          { $1 }
                                 | unopExp                                           { $1 }
                                 | TLpar exp TRpar                                   { $2 }
                                 | funCallExp                                        { $1 }
-                                | TLength lexp                                      { LengthExp $2 }
+                                | TLength exp                                       { LengthExp $2 }
                                 | TNumber                                           { NumberExp $ number $1 }
+                                | TQChar                                            { QCharExp $ char $1 }
 
 funCallExp:                     TName TLpar pars TRpar                              { FunctionAppExp $1 $3 }
 
@@ -128,7 +132,7 @@ binopExp:                       exp TPlus exp                                   
 unopExp:                        TNot exp                                            { UnaryExp NotOp $2}
 
 pars:                           parTail                                             { $1 }
-                                |                                                   { [] }
+                                | {- empty -}                                       { [] }
 
 parTail:                        exp                                                 { [$1] }
                                 | exp TComma parTail                                { $1 : $3 }
@@ -173,11 +177,12 @@ data Token
      | TMinus
      | TInt
      | TChar
+     | TVoid
      | TLess
      | TLessEqual
      | TComment
      | TNumber { number :: Integer }
-     | TQchar Char
+     | TQChar { char :: Char }
      | TName String
      deriving Show
 
@@ -209,7 +214,7 @@ lexer ('<':'=':cs)      =     TLessEqual : lexer cs
 lexer ('\n':'\n':cs)    =     TEnd : lexer cs
 lexer ('\t':cs)         =     TTab : lexer cs
 lexer (',':cs)          =     TComma : lexer cs
-lexer ('\'':c:'\'':cs)  =     TQchar c : lexer cs
+lexer ('\'':c:'\'':cs)  =     TQChar c : lexer cs
 
 lexNum cs = TNumber (read num) : lexer rest
       where (num,rest) = span isDigit cs
@@ -223,6 +228,7 @@ lexName cs =
       ("length",rest)   ->    TLength : lexer rest
       ("read",rest)     ->    TRead : lexer rest
       ("return",rest)   ->    TReturn : lexer rest
+      ("void", rest )   ->    TVoid : lexer rest
       ("while",rest)    ->    TWhile : lexer rest
       ("write",rest)    ->    TWrite : lexer rest
       (var,rest)        ->    TName var : lexer rest
