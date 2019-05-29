@@ -6,6 +6,7 @@ import Debug.Trace
 import System.Environment
 
 import AST
+import Environment
 import Type
 import TypeChecking
 }
@@ -95,6 +96,7 @@ statement:                      lexp TAssign exp                                
                                 | TReturn exp                                       { ReturnStmt $2 }
                                 | TRead lexp                                        { ReadStmt $2 }
                                 | TWrite lexp                                       { WriteStmt $2 }
+                                | TIf TLpar exp TRpar block TElse block             { IfStmt $3 $5 $7 }
                                 | block                                             { BlockStmt $1 }
                                 | exp                                               { ExpStmt $1 }
 
@@ -236,5 +238,7 @@ lexName cs =
 main = do args <- getArgs
           if (length args) /= 1
              then putStrLn "Exactly one argument, filename, expected"
-             else (readFile $ head args) >>= print . parser . lexer
+             else (readFile $ head args) >>= \(fileContent) -> let decls = parser $ lexer fileContent
+                                                               in do print $ TypeChecking.typeCheckDeclarations Environment.empty decls
+                                                                     print decls
 }

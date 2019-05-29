@@ -13,6 +13,7 @@ module AST where
     data Statement =                AssignStmt LeftExpression Expression
                                     | BlockStmt Body
                                     | ExpStmt Expression 
+                                    | IfStmt Expression Body Body
                                     | ReturnStmt Expression
                                     | ReadStmt LeftExpression
                                     | WriteStmt LeftExpression
