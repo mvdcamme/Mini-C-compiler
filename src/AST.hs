@@ -72,9 +72,9 @@ module AST where
 
     type WithLocation t =           State Location t
 
-    nextLoc :: WithLocation t -> WithLocation ()
-    nextLoc state = do loc <- get
-                       put $ loc + 1
+    nextLoc :: WithLocation ()
+    nextLoc = do loc <- get
+                 put $ loc + 1
 
     -- instance Functor Wrapped where
     --   fmap f (Wrapped loc v) = Wrapped loc $ f v
