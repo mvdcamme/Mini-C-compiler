@@ -7,6 +7,7 @@ import System.Environment
 
 import AST
 import Environment
+import ThreeAddressCode
 import Type
 import TypeChecking
 }
@@ -62,82 +63,84 @@ import TypeChecking
 
 %%
 
-program:                        declarations                                        { $1 }
+program:                        declarations                                              { $1 }
                                 
-declarations:                   declaration declarations                            { $1 : $2 }
-                                |                                                   { [] }
+declarations:                   declaration declarations                                  { $1 : $2 }
+                                |                                                         { [] }
 
-declaration:                    var_declaration                                     { $1 }
-                                | fun_definition                                    { $1 }
+declaration:                    var_declaration                                           { $1 }
+                                | fun_definition                                          { $1 }
 
-type:                           TInt                                                { Atom IntType }
-                                | TChar                                             { Atom CharType }
-                                | TVoid                                             { Atom VoidType }
+type:                           TInt                                                      { Atom IntType }
+                                | TChar                                                   { Atom CharType }
+                                | TVoid                                                   { Atom VoidType }
 
-var_declaration:                type TName TSemicolon                               { VarDeclaration $1 $2 }
+var_declaration:                type TName TSemicolon                                     { VarDeclaration $1 $2 }
 
-var_declarations:               var_declaration var_declarations                    { $1 : $2 }
-                                |                                                   { [] }
+var_declarations:               var_declaration var_declarations                          { $1 : $2 }
+                                |                                                         { [] }
 
-fun_definition:                 type TName TLpar formal_pars TRpar block            { FunDeclaration $1 $2 $4 $6 }
+fun_definition:                 type TName TLpar formal_pars TRpar block                  { FunDeclaration $1 $2 $4 $6 }
 
-formal_pars:                    formal_pars_tail                                    { $1 }
-                                |                                                   { [] }
+formal_pars:                    formal_pars_tail                                          { $1 }
+                                |                                                         { [] }
                                 
                                 
-formal_pars_tail:               formal_par                                          { [$1] }
-                                | formal_par TComma formal_pars_tail                { $1 : $3 }
+formal_pars_tail:               formal_par                                                { [$1] }
+                                | formal_par TComma formal_pars_tail                      { $1 : $3 }
 
-formal_par:                     type TName                                          { VarDeclaration $1 $2 }
+formal_par:                     type TName                                                { VarDeclaration $1 $2 }
 
-block:                          TLbrace var_declarations statements TRbrace         { Body $2 $3 }
+block:                          TLbrace var_declarations statements TRbrace               { Body $2 $3 }
 
-statement:                      lexp TAssign exp                                    { AssignStmt $1 $3 }
-                                | TReturn exp                                       { ReturnStmt $2 }
-                                | TRead lexp                                        { ReadStmt $2 }
-                                | TWrite lexp                                       { WriteStmt $2 }
-                                | TIf TLpar exp TRpar block TElse block             { IfStmt $3 $5 $7 }
-                                | block                                             { BlockStmt $1 }
-                                | exp                                               { ExpStmt $1 }
+statement:                      lexp TAssign exp                                          { AssignStmt $1 $3 }
+                                | TReturn exp                                             { ReturnStmt $2 }
+                                | TRead lexp                                              { ReadStmt $2 }
+                                | TWrite lexp                                             { WriteStmt $2 }
+                                | TIf TLpar exp TRpar block TElse marker block marker     { IfStmt $3 $5 $7 $8 $9 }
+                                | block                                                   { BlockStmt $1 }
+                                | exp                                                     { ExpStmt $1 }
 
-statements:                     statement statement_semicolon                       { $1 : $2 }
-                                |                                                   { [] }
+statements:                     statement statement_semicolon                             { $1 : $2 }
+                                |                                                         { [] }
 
-statement_semicolon:            TSemicolon statements                               { $2 }
-                                |                                                   { [] }
+statement_semicolon:            TSemicolon statements                                     { $2 }
+                                |                                                         { [] }
 
-lexp:                           TName                                               { VariableRefExp $1 }
-                                | exp TLbrack exp TRbrack                           { ArrayRefExp $1 $3 }
+lexp:                           TName                                                     { VariableRefExp $1 }
+                                | exp TLbrack exp TRbrack                                 { ArrayRefExp $1 $3 }
 
-exp:                            lexp                                                { LeftExp $1 }
-                                | binopExp                                          { $1 }
-                                | unopExp                                           { $1 }
-                                | TLpar exp TRpar                                   { $2 }
-                                | funCallExp                                        { $1 }
-                                | TLength exp                                       { LengthExp $2 }
-                                | TNumber                                           { NumberExp $ number $1 }
-                                | TQChar                                            { QCharExp $ char $1 }
+exp:                            lexp                                                      { LeftExp $1 }
+                                | binopExp                                                { $1 }
+                                | unopExp                                                 { $1 }
+                                | TLpar exp TRpar                                         { $2 }
+                                | funCallExp                                              { $1 }
+                                | TLength exp                                             { LengthExp $2 }
+                                | TNumber                                                 { NumberExp $ number $1 }
+                                | TQChar                                                  { QCharExp $ char $1 }
 
-funCallExp:                     TName TLpar pars TRpar                              { FunctionAppExp $1 $3 }
+funCallExp:                     TName TLpar pars TRpar                                    { FunctionAppExp $1 $3 }
 
-binopExp:                       exp TPlus exp                                       { BinaryExp PlusOp $1 $3 }
-                                | exp TMinus exp                                    { BinaryExp MinusOp $1 $3 }
-                                | exp TTimes exp                                    { BinaryExp TimesOp $1 $3 }
-                                | exp TDivide exp                                   { BinaryExp DivideOp $1 $3 }
-                                | exp TEqual exp                                    { BinaryExp EqualOp $1 $3 }
-                                | exp TNequal exp                                   { BinaryExp NequalOp $1 $3 }
-                                | exp TGreater exp                                  { BinaryExp GreaterOp $1 $3 }
-                                | exp TGreaterEqual exp                             { BinaryExp GreaterEqualOp $1 $3 }
-                                | exp TLess exp                                     { BinaryExp LessOp $1 $3 }
-                                | exp TLessEqual exp                                { BinaryExp LessEqualOp $1 $3 }
+binopExp:                       exp TPlus exp                                             { BinaryExp PlusOp $1 $3 }
+                                | exp TMinus exp                                          { BinaryExp MinusOp $1 $3 }
+                                | exp TTimes exp                                          { BinaryExp TimesOp $1 $3 }
+                                | exp TDivide exp                                         { BinaryExp DivideOp $1 $3 }
+                                | exp TEqual exp                                          { BinaryExp EqualOp $1 $3 }
+                                | exp TNequal exp                                         { BinaryExp NequalOp $1 $3 }
+                                | exp TGreater exp                                        { BinaryExp GreaterOp $1 $3 }
+                                | exp TGreaterEqual exp                                   { BinaryExp GreaterEqualOp $1 $3 }
+                                | exp TLess exp                                           { BinaryExp LessOp $1 $3 }
+                                | exp TLessEqual exp                                      { BinaryExp LessEqualOp $1 $3 }
 
-unopExp:                        TNot exp                                            { UnaryExp NotOp $2}
+unopExp:                        TNot exp                                                  { UnaryExp NotOp $2}
 
-pars:                           parTail                                             { $1 }
-                                | {- empty -}                                       { [] }
+pars:                           parTail                                                   { $1 }
+                                | {- empty -}                                             { [] }
 
-parTail:                        exp                                                 { [$1] }
-                                | exp TComma parTail                                { $1 : $3 }
+parTail:                        exp                                                       { [$1] }
+                                | exp TComma parTail                                      { $1 : $3 }
+
+marker:                         {- empty -}                                               { Marker 1 }
 
 {
 

@@ -1,8 +1,14 @@
 module AST where
 
+    import Control.Monad.State
+
     import Type
 
     type Name =                     String
+
+    -- TODO: 
+    -- data Definition =               VarDefinition Type Name Exp
+    --                                 | FunDefinition Type Name Declarations Body
 
     data Declaration =              VarDeclaration Type Name
                                     | FunDeclaration Type Name Declarations Body
@@ -13,11 +19,11 @@ module AST where
     data Statement =                AssignStmt LeftExpression Expression
                                     | BlockStmt Body
                                     | ExpStmt Expression 
-                                    | IfStmt Expression Body Body
+                                    | IfStmt Expression Body Marker Body Marker
                                     | ReturnStmt Expression
                                     | ReadStmt LeftExpression
                                     | WriteStmt LeftExpression
-                                    | WhileStmt Marker Expression Marker Body Marker
+                                    | WhileStmt Marker Expression Body Marker
                                     deriving (Show, Eq)
 
     type Statements =               [Statement]
@@ -63,4 +69,23 @@ module AST where
 
     data Goto =                     Goto Marker
                                     deriving (Show, Eq)
+
+    type WithLocation t =           State Location t
+
+    nextLoc :: WithLocation t -> WithLocation ()
+    nextLoc state = do loc <- get
+                       put $ loc + 1
+
+    -- instance Functor Wrapped where
+    --   fmap f (Wrapped loc v) = Wrapped loc $ f v
+
+    -- instance Applicative Wrapped where
+    --   pure = Wrap
+    --   Wrap f <*> Wrap x = Wrap (f x)
+
+    -- instance Monad Wrapped where
+    --   return t = TypeSuccess Environment.empty t
+    --   (TypeError msg) >>= _ = TypeError msg
+    --   (TypeSuccess env typ) >>= _ = TypeError "wefoijqei"
+    --   fail msg = TypeError msg
 

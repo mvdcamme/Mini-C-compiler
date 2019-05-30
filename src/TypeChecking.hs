@@ -146,14 +146,14 @@ module TypeChecking where
                                          else return ()
     typeCheckStatement env (BlockStmt block) = typeCheckBlock env block >> return ()
     typeCheckStatement env (ExpStmt exp) = typeCheckExp env exp >> return ()
-    typeCheckStatement env (IfStmt pred thenBody elseBody) = do typeCheckExp env pred -- Type of the predicate can be everything: is not restricted to an integral type
-                                                                typeCheckBlock env thenBody
-                                                                typeCheckBlock env elseBody
-                                                                return ()
+    typeCheckStatement env (IfStmt pred thenBody _ elseBody _) = do typeCheckExp env pred -- Type of the predicate can be everything: is not restricted to an integral type
+                                                                    typeCheckBlock env thenBody
+                                                                    typeCheckBlock env elseBody
+                                                                    return ()
     typeCheckStatement env (ReturnStmt exp) = typeCheckExp env exp >> return ()
     typeCheckStatement env (ReadStmt lexp) = typeCheckLExp env lexp >> return ()
     typeCheckStatement env (WriteStmt lexp) = typeCheckLExp env lexp >> return ()
-    typeCheckStatement env (WhileStmt _ pred _ body _) = typeCheckExp env pred >> typeCheckBlock env body >> return ()
+    typeCheckStatement env (WhileStmt _ pred body _) = typeCheckExp env pred >> typeCheckBlock env body >> return ()
 
     typeCheckStatements :: Environment -> [Statement] -> TypeChecked ()
     typeCheckStatements _ [] = return ()
