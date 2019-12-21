@@ -64,7 +64,7 @@ import TypeChecking
 
 %%
 
-program:                        declarations                                              { $1 :: (State Location Declarations) }
+program:                        declarations                                              { $1 :: (State AST.Location Declarations) }
                                 
 declarations:                   declaration declarations                                  { do decl <- $1; decls <- $2; return $ decl : decls }
                                 |                                                         { return [] }
@@ -145,7 +145,7 @@ marker:                         {- empty -}                                     
 
 {
 
-nilLocation :: Location
+nilLocation :: AST.Location
 nilLocation = 0
 
 
@@ -206,7 +206,7 @@ lexer ('-':cs)          =     TMinus : lexer cs
 lexer ('*':cs)          =     TTimes : lexer cs
 lexer ('/':cs)          =     TDivide : lexer cs
 lexer (';':cs)          =     TSemicolon : lexer cs
-lexer ('!' : 'x' :cs)          =     TNot : lexer cs
+lexer ('!' : 'x' :cs)   =     TNot : lexer cs
 lexer ('(':cs)          =     TLpar : lexer cs
 lexer (')':cs)          =     TRpar : lexer cs
 lexer ('{':cs)          =     TLbrace : lexer cs

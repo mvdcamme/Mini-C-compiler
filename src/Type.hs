@@ -1,11 +1,15 @@
 module Type where
 
-    data AtomicType =   IntType
-                        | CharType
-                        | VoidType
-                        deriving (Show, Eq)
+  import Environment
 
-    data Type =         Atom AtomicType
-                        | ArrowType [Type] Type
-                        | ArrayType Int Type
-                        deriving (Show, Eq)
+  data AtomicType =       IntType
+                          | CharType
+                          | VoidType
+                          deriving (Show, Eq)
+
+  data Type =             Atom AtomicType
+                          | ArrowType [Type] Type
+                          | ArrayType Int Type
+                          deriving (Show, Eq)
+
+  type TypeEnvironment =  GenericEnvironment Type

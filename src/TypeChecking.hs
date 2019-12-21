@@ -11,25 +11,6 @@ module TypeChecking where
     type TypeResult = TypeChecked Type
 
 
-    -- data TypeChecked t = TypeError String
-    --                      | TypeSuccess Environment t
-    -- type TypeResult = TypeChecked Type
-
-    -- instance Functor TypeChecked where
-    --   fmap f (TypeError msg) = TypeError msg
-    --   fmap f (TypeSuccess env x) = TypeSuccess env (f x)
-
-    -- instance Applicative TypeChecked where
-    --   pure = Wrap
-    --   Wrap f <*> Wrap x = Wrap (f x)
-
-    -- instance Monad TypeChecked where
-    --   return t = TypeSuccess Environment.empty t
-    --   (TypeError msg) >>= _ = TypeError msg
-    --   (TypeSuccess env typ) >>= _ = TypeError "wefoijqei"
-    --   fail msg = TypeError msg
-
-
     unknownVariableRefError :: Name -> TypeResult
     unknownVariableRefError var = error $ printf "Unknown variable %s" var
 
@@ -63,18 +44,18 @@ module TypeChecking where
     typeOfArrayType (ArrayType _ arrayElementType) = return arrayElementType
     typeOfArrayType t = error $ printf "Type %s is not an array type" $ show t
 
-    typeOfArrayRefExp :: Environment -> Expression -> Expression -> TypeResult
+    typeOfArrayRefExp :: TypeEnvironment -> Expression -> Expression -> TypeResult
     typeOfArrayRefExp env arrayExp indexExp = do arrayType <- typeCheckExp env arrayExp
                                                  typeOfArrayType arrayType
 
-    typeOfIntegralUnOp :: Environment -> UnOperator -> Expression -> (Type -> TypeChecked Bool) -> TypeResult
+    typeOfIntegralUnOp :: TypeEnvironment -> UnOperator -> Expression -> (Type -> TypeChecked Bool) -> TypeResult
     typeOfIntegralUnOp env unOp exp pred = do tExp <- typeCheckExp env exp
                                               cond <- isIntegralType tExp
                                               if cond
                                               then return $ Atom IntType
                                               else error $ printf "%s expected integral type, received a %s instead" (show unOp) $ show tExp
 
-    typeOfIntegralBinOp :: Environment -> BinOperator -> Expression -> Expression -> (Type -> TypeChecked Bool) -> TypeResult
+    typeOfIntegralBinOp :: TypeEnvironment -> BinOperator -> Expression -> Expression -> (Type -> TypeChecked Bool) -> TypeResult
     typeOfIntegralBinOp env binOp exp1 exp2 pred = do tExp1 <- typeCheckExp env exp1
                                                       tExp2 <- typeCheckExp env exp2
                                                       cond1 <- isIntegralType tExp1
@@ -83,10 +64,10 @@ module TypeChecking where
                                                       then return $ Atom IntType
                                                       else error $ printf "%s expected integral types, received a %s and a %s instead" (show binOp) (show tExp1) $ show tExp2
 
-    typeOfBinaryExp :: Environment -> Expression -> Expression -> BinOperator -> TypeResult
+    typeOfBinaryExp :: TypeEnvironment -> Expression -> Expression -> BinOperator -> TypeResult
     typeOfBinaryExp env exp1 exp2 binOp = typeOfIntegralBinOp env binOp exp1 exp2 isIntegralType
 
-    expsMatchTypes :: Environment -> [Expression] -> [Type] -> TypeChecked ()
+    expsMatchTypes :: TypeEnvironment -> [Expression] -> [Type] -> TypeChecked ()
     expsMatchTypes env exps types = Prelude.foldl (\prev curr -> let (exp, expectedType) = curr in
                                                                  do cond <- prev
                                                                     tExp <- typeCheckExp env exp
@@ -95,31 +76,31 @@ module TypeChecking where
                                                                     else fail $ printf "%s was expected to be of type %s; is of type %s instead" (show exp) (show tExp) (show expectedType))
                                           (return ()) $ zip exps types
 
-    typeOfFunctionAppExp :: Environment -> Name -> [Expression] -> TypeResult
+    typeOfFunctionAppExp :: TypeEnvironment -> Name -> [Expression] -> TypeResult
     typeOfFunctionAppExp env var exps = case Environment.lookup var env of
       Nothing -> unknownVariableRefError var
       Just (ArrowType tArgs tResult) -> expsMatchTypes env exps tArgs >> return tResult
       other -> error $ printf "Operator in function application has incorrect type: %s" $ show other
 
-    typeOfLengthExp :: Environment -> Expression -> TypeResult
+    typeOfLengthExp :: TypeEnvironment -> Expression -> TypeResult
     typeOfLengthExp env exp = do tExp <- typeCheckExp env exp
                                  if isArrayType tExp
                                  then return $ Atom IntType
                                  else error $ printf "Length expected an array, received a %s" $ show tExp
       
-    typeOfUnaryExp :: Environment -> Expression -> UnOperator -> TypeResult
+    typeOfUnaryExp :: TypeEnvironment -> Expression -> UnOperator -> TypeResult
     typeOfUnaryExp env exp unOp = typeOfIntegralUnOp env unOp exp isIntegralType
 
-    typeOfVariableRefExp :: Environment -> Name -> TypeResult
+    typeOfVariableRefExp :: TypeEnvironment -> Name -> TypeResult
     typeOfVariableRefExp env var = case Environment.lookup var env of
       Just t -> return t
       Nothing -> unknownVariableRefError var
 
-    typeCheckLExp :: Environment -> LeftExpression -> TypeResult
+    typeCheckLExp :: TypeEnvironment -> LeftExpression -> TypeResult
     typeCheckLExp env (ArrayRefExp array index) = typeOfArrayRefExp env array index
     typeCheckLExp env (VariableRefExp var) = typeOfVariableRefExp env var
 
-    typeCheckExp :: Environment -> Expression -> TypeResult
+    typeCheckExp :: TypeEnvironment -> Expression -> TypeResult
     typeCheckExp env exp = case exp of
         NumberExp _ -> return $ Atom IntType
         QCharExp _ -> return $ Atom CharType
@@ -129,7 +110,7 @@ module TypeChecking where
         UnaryExp unOp exp -> typeOfUnaryExp env exp unOp
         LeftExp lexp -> typeCheckLExp env lexp
 
-    typeCheckStatement :: Environment -> Statement -> TypeChecked ()
+    typeCheckStatement :: TypeEnvironment -> Statement -> TypeChecked ()
     typeCheckStatement env (AssignStmt lexp exp) = case lexp of
         VariableRefExp var -> do typ <- typeOfVariableRefExp env var
                                  tExp <- typeCheckExp env exp
@@ -155,7 +136,7 @@ module TypeChecking where
     typeCheckStatement env (WriteStmt lexp) = typeCheckLExp env lexp >> return ()
     typeCheckStatement env (WhileStmt _ pred body _) = typeCheckExp env pred >> typeCheckBlock env body >> return ()
 
-    typeCheckStatements :: Environment -> [Statement] -> TypeChecked ()
+    typeCheckStatements :: TypeEnvironment -> [Statement] -> TypeChecked ()
     typeCheckStatements _ [] = return ()
     typeCheckStatements env (stmt:stmts) = (typeCheckStatement env stmt) >> (typeCheckStatements env stmts)
 
@@ -164,22 +145,22 @@ module TypeChecking where
     declarationsToTypes ((VarDeclaration typ _):decls) = typ : declarationsToTypes decls
     declarationsToTypes ((FunDeclaration retTyp _ parDecls _):decls) = (ArrowType (declarationsToTypes parDecls) retTyp) : declarationsToTypes decls
 
-    typeCheckDeclaration :: Environment -> Declaration -> TypeChecked Environment
+    typeCheckDeclaration :: TypeEnvironment -> Declaration -> TypeChecked TypeEnvironment
     typeCheckDeclaration env (VarDeclaration typ name) = return $ Environment.insert name typ env
     typeCheckDeclaration env (FunDeclaration typ name decls body) = let frameAddedEnv = Environment.push env -- Push new frame for the function's parameters
                                                                     in do updatedEnv <- typeCheckDeclarations frameAddedEnv decls -- Add parameters to the environment
                                                                           typeCheckBlock updatedEnv body -- Typecheck the function's body
                                                                           return $ Environment.insert name (ArrowType (declarationsToTypes decls) typ) env -- Insert the function declaration into the _original_ environment
 
-    typeCheckDeclarations :: Environment -> [Declaration] -> TypeChecked Environment
+    typeCheckDeclarations :: TypeEnvironment -> [Declaration] -> TypeChecked TypeEnvironment
     typeCheckDeclarations env [] = return env
     typeCheckDeclarations env (decl:decls) = typeCheckDeclaration env decl >>= \(updatedEnv) -> typeCheckDeclarations updatedEnv decls
 
-    typeCheckBlock' :: Environment -> Body -> TypeChecked ()
+    typeCheckBlock' :: TypeEnvironment -> Body -> TypeChecked ()
     typeCheckBlock' _ (Body [] []) = return ()
     typeCheckBlock' env (Body decls stmts) = typeCheckDeclarations env decls >>= \(updatedEnv) -> typeCheckStatements updatedEnv stmts
 
-    typeCheckBlock :: Environment -> Body -> TypeChecked ()
+    typeCheckBlock :: TypeEnvironment -> Body -> TypeChecked ()
     typeCheckBlock env body = let frameAddedEnv = Environment.push env
                               in typeCheckBlock' frameAddedEnv body
 

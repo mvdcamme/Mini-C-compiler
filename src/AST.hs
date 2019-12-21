@@ -60,6 +60,8 @@ module AST where
 
     data UnOperator =               MinusUnOp
                                     | NotOp
+                                    | IncOp
+                                    | DecOp
                                     deriving (Show, Eq)
 
     type Location =                 Integer
