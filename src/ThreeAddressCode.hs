@@ -45,6 +45,10 @@ module ThreeAddressCode where
 
   type LocEnv =               GenericEnvironment ThreeAddressCode.Location
 
+  data CompiledExp = CompiledExp { expTacs :: TACs, expEnv :: LocEnv, expLocs :: Locations, input :: Input }
+  data CompiledStm = CompiledStm { stmTacs :: TACs, stmEnv :: LocEnv, stmLocs :: Locations }
+  data InputTuple4 = InputTuple4 { iptacs :: TACs, ipenv :: LocEnv, iplocs :: Locations, ipinputs :: [Input] }
+
   incGlobals :: Locations -> (Address, Locations)
   incGlobals (Locations globals pars locals exps) = (globals, Locations (globals + 1) pars locals exps)
   incPars :: Locations -> (Address, Locations)
@@ -58,12 +62,9 @@ module ThreeAddressCode where
   emptyLocals :: Locations
   emptyLocals = Locations 0 0 0 0
 
-  data Tuple4 = Tuple4 { tacs :: TACs, env :: LocEnv, locs :: Locations, input :: Input }
-  data InputTuple4 = InputTuple4 { iptacs :: TACs, ipenv :: LocEnv, iplocs :: Locations, ipinputs :: [Input] }
-
-  binaryExpToTACs :: LocEnv -> Locations -> Expression -> Expression -> BinOperator -> (TACs, LocEnv, Locations, Input)
-  binaryExpToTACs env locs left right op = let (leftTACs, env1, locs1, input1) = expToTACs env locs left
-                                               (rightTACs, env2, locs2, input2) = expToTACs env1 locs1 right
+  binaryExpToTACs :: LocEnv -> Locations -> Expression -> Expression -> BinOperator -> CompiledExp
+  binaryExpToTACs env locs left right op = let CompiledExp leftTACs env1 locs1 input1 = expToTACs env locs left
+                                               CompiledExp rightTACs env2 locs2 input2 = expToTACs env1 locs1 right
                                                (output, locs3) = incExps locs2
                                                makeTAC = case op of
                                                   PlusOp -> AddCode
@@ -77,10 +78,10 @@ module ThreeAddressCode where
                                                   GreaterOp -> GtrCode
                                                   GreaterEqualOp -> GeqCode
                                                tac = makeTAC input1 input2 $ OutAddr output
-                                           in ([tac], env, locs, InAddr output)
+                                           in CompiledExp [tac] env locs $ InAddr output
 
-  unaryExpToTACs :: LocEnv -> Locations -> Expression -> UnOperator -> (TACs, LocEnv, Locations, Input)
-  unaryExpToTACs env locs exp op = let (leftTACs, env1, locs1, input1) = expToTACs env locs exp
+  unaryExpToTACs :: LocEnv -> Locations -> Expression -> UnOperator -> CompiledExp
+  unaryExpToTACs env locs exp op = let CompiledExp leftTACs env1 locs1 input1 = expToTACs env locs exp
                                        (address, locs2) = incExps locs1
                                        makeTAC = case op of
                                                  IncOp      -> IncCode
@@ -88,36 +89,39 @@ module ThreeAddressCode where
                                                  NotOp      -> NotCode
                                                  MinusUnOp  -> InvCode
                                        tac = makeTAC input1 $ OutAddr address
-                                   in ([tac], env1, locs2, InAddr address)
+                                   in CompiledExp [tac] env1 locs2 $ InAddr address
 
-  -- expressions should always produce some input (or is it an output?)
-  expToTACs :: LocEnv -> Locations -> Expression -> (TACs, LocEnv, Locations, Input)
-  expToTACs env locs (NumberExp integer) = ([], env, locs, Literal $ IntValue integer)
-  expToTACs env locs (QCharExp char) = ([], env, locs, Literal $ CharValue char)
+
+  compileArgs :: LocEnv -> Locations -> Expressions -> CompiledStm
+  compileArgs env locs exps = let (env1, locs1, tacs1, inputs1) = foldl (\(env, locs, tacs, inputs) exp -> 
+                                                                         let CompiledExp tacs1 env1 locs1 input = expToTACs env locs exp
+                                                                         in (env1, locs1, (tacs1 ++ tacs), (input : inputs))) (env, locs, [], []) exps
+                              in CompiledStm (tacs1 ++ (map PushArgCode inputs1)) env1 locs1
+
+  -- expressions should always produce some input
+  expToTACs :: LocEnv -> Locations -> Expression -> CompiledExp
+  expToTACs env locs (NumberExp integer) = CompiledExp [] env locs . Literal $ IntValue integer
+  expToTACs env locs (QCharExp char) = CompiledExp [] env locs . Literal $ CharValue char
   expToTACs env locs (BinaryExp op left right) = binaryExpToTACs env locs left right op
   expToTACs env locs (LeftExp (VariableRefExp name)) = let (address, locs1) = incLocals locs
                                                        in case Environment.lookup name env of
-                                                          Just (Global global) -> ([GlobalVarCode (InAddr global) (OutAddr address)], env, locs1, InAddr address)
-                                                          Just (Local local) -> ([LocalVarCode (InAddr local) (OutAddr address)], env, locs1, InAddr address)
-                                                          Just (Parameter par) -> ([ParCode (InAddr par) (OutAddr address)], env, locs1, InAddr address)
-                                                          Nothing -> ([], env, locs, InAddr (-1)) -- TODO: Should produce an error
+                                                          Just (Global global) -> CompiledExp [GlobalVarCode (InAddr global) (OutAddr address)] env locs1 $ InAddr address
+                                                          Just (Local local) -> CompiledExp [LocalVarCode (InAddr local) (OutAddr address)] env locs1 $ InAddr address
+                                                          Just (Parameter par) -> CompiledExp [ParCode (InAddr par) (OutAddr address)] env locs1 $ InAddr address
+                                                          Nothing -> CompiledExp [] env locs $ InAddr (-1) -- TODO: Should produce an error
   expToTACs env locs (UnaryExp op exp) = unaryExpToTACs env locs exp op
-  expToTACs env locs (FunctionAppExp name args) = let (InputTuple4 evalArgsTACs env1 locs1 inputs) = foldl (\ip arg ->
-                                                                                                            let (tacs2, env2, locs2, input2) = expToTACs (ipenv ip) (iplocs ip) arg
-                                                                                                            in InputTuple4 (iptacs ip ++ tacs2) env2 locs2 (ipinputs ip ++ [input2]) 
-                                                                                                           ) first args
-                                                                                            where first = InputTuple4 [] env locs []
+  expToTACs env locs (FunctionAppExp name args) = let CompiledStm evalArgsTACs env1 locs1 = compileArgs env locs args 
                                                       (address, locs3) = incExps locs1
-                                                  in ((evalArgsTACs ++ map (\(input) -> PushArgCode input) inputs), env1, locs3, InAddr address) -- TODO Add CallCode
+                                                  in CompiledExp evalArgsTACs env1 locs1 $ InAddr address -- TODO Add CallCode
 
-  declarationToTACs :: LocEnv -> Locations -> Declaration -> (TACs, LocEnv, Locations)
+  declarationToTACs :: LocEnv -> Locations -> Declaration -> CompiledStm
   declarationToTACs env locs (VarDeclaration _ name) = let (address, updatedLocs) = incLocals locs
                                                            updatedEnv = Environment.insert name (Global address) env
-                                                       in ([GlobalVarCode (Literal $ IntValue 0) $ OutAddr address], updatedEnv, updatedLocs)
+                                                       in CompiledStm [GlobalVarCode (Literal $ IntValue 0) $ OutAddr address] updatedEnv updatedLocs
 
   generateTACs' :: LocEnv -> Locations -> Declarations -> TACs
   generateTACs' env locs [] = []
-  generateTACs' env locs (decl:decls) = let (tacs, env1, locs1) = declarationToTACs env locs decl
+  generateTACs' env locs (decl:decls) = let CompiledStm tacs env1 locs1 = declarationToTACs env locs decl
                                         in tacs ++ generateTACs' env1 locs1 decls
 
   generateTACs :: Declarations -> TACs
