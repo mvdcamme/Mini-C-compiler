@@ -3,6 +3,7 @@ module Main where
 
 import Control.Monad.State
 import Data.Char
+import Data.List
 import Debug.Trace
 import System.Environment
 
@@ -242,7 +243,12 @@ lexName cs =
 main = do args <- getArgs
           if (length args) /= 1
              then putStrLn "Exactly one argument, filename, expected"
-             else (readFile $ head args) >>= \(fileContent) -> let (decls, _) = runState (parser $ lexer fileContent) nilLocation
-                                                               in do print $ TypeChecking.typeCheckDeclarations Environment.empty decls
-                                                                     print decls
+             else (readFile $ head args) >>= \(fileContent) ->
+                  let (decls, _) = runState (parser $ lexer fileContent) nilLocation
+                  in do print "##### TYPES #####"
+                        print $ TypeChecking.typeCheckDeclarations Environment.empty decls
+                        print "##### DECLARATIONS #####"
+                        putStrLn $ concat (intersperse "\n" $ map show decls)
+                        print "##### TACS #####"
+                        putStrLn $ concat (intersperse "\n" . map show $ generateTACs decls)
 }
