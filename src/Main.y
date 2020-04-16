@@ -9,6 +9,7 @@ import System.Environment
 
 import AST
 import Environment
+import LLVM_ATT
 import ThreeAddressCode
 import Type
 import TypeChecking
@@ -96,7 +97,8 @@ formal_par:                     type TName                                      
 block:                          TLbrace var_declarations statements TRbrace               { do decls <- $2; stmts <- $3; return $ Body decls stmts }
 
 statement:                      lexp TAssign exp                                          { do lexp <- $1; exp <- $3; return $ AssignStmt lexp exp }
-                                | TReturn exp                                             { $2 >>= \(exp) -> return $ ReturnStmt exp }
+                                | TReturn                                                 { return Return0Stmt }
+                                | TReturn exp                                             { $2 >>= \(exp) -> return $ Return1Stmt exp }
                                 | TRead lexp                                              { $2 >>= \(lexp) -> return $ ReadStmt lexp }
                                 | TWrite lexp                                             { $2 >>= \(lexp) -> return $ WriteStmt lexp }
                                 | TIf TLpar exp TRpar block TElse marker block marker     { do pred <- $3; blk1 <- $5; mrk1 <- $7; blk2 <- $8; mrk2 <- $9; return $ IfStmt pred blk1 mrk1 blk2 mrk2 }
@@ -246,9 +248,10 @@ main = do args <- getArgs
              else (readFile $ head args) >>= \(fileContent) ->
                   let (decls, _) = runState (parser $ lexer fileContent) nilLocation
                   in do print "##### TYPES #####"
-                        print $ TypeChecking.typeCheckDeclarations Environment.empty decls
+                        print $ TypeChecking.typeCheckDeclarations decls
                         print "##### DECLARATIONS #####"
                         putStrLn $ concat (intersperse "\n" $ map show decls)
                         print "##### TACS #####"
-                        putStrLn $ concat (intersperse "\n" . map show $ generateTACs decls)
+                        print $ generateTACs decls
+                        -- putStrLn $ concat (intersperse "\n" . map show $ generateTACs decls)
 }

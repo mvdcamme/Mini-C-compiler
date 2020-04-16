@@ -20,7 +20,8 @@ module AST where
                                     | BlockStmt Body
                                     | ExpStmt Expression 
                                     | IfStmt Expression Body Marker Body Marker
-                                    | ReturnStmt Expression
+                                    | Return1Stmt Expression                        -- Returns a value
+                                    | Return0Stmt                                   -- Does not return a value
                                     | ReadStmt LeftExpression
                                     | WriteStmt LeftExpression
                                     | WhileStmt Marker Expression Body Marker
