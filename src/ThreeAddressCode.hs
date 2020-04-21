@@ -49,11 +49,12 @@ module ThreeAddressCode where
                               | IncCode Input Output          -- Increment
                               | DecCode Input Output          -- Decrement
                               | NotCode Input Output          -- Logical Not
-                              | PuaCode Input                 -- Push argument
+                              | ArgCode Input                 -- Pass argument to function
                               | LblCode Marker                -- Define label with marker
                               | JmpCode Marker                -- Unconditional jump
                               | JezCode Input Marker          -- Jump if input equals zero
                               | JnzCode Input Marker          -- Jump if input does not equal zero
+                              | ExtCode                       -- Exit program: TODO should get an input for the exit code
                               | Rt0Code                       -- Return from function without value
                               | Rt1Code Input                 -- Return from function with value
                               | CllCode FunctionName Output   -- Call function
@@ -81,17 +82,18 @@ module ThreeAddressCode where
   type FunctionTACs         = [FunctionTAC]
   type GlobalVarTACs        = [GlobalVarTAC]
 
-  data TACFile              = TACFile { globalVarDeclarations :: GlobalVarTACs, functionDefinitions :: FunctionTACs }
+  data TACFile              = TACFile { globalVarDeclarations :: GlobalVarTACs, functionDefinitions :: FunctionTACs, mainFunctionDefinition :: Maybe FunctionTAC }
                               deriving (Eq)
 
   instance Show TACFile where
-    show (TACFile globals functions) =
-      let globalString = concat  . intersperse "\n" $ map show globals
-          functionsString = concat  . intersperse "\n" $ map show functions
-      in "TACFile:\n\n" ++ globalString ++ "\n\n" ++ functionsString
+    show (TACFile globals functions main) =
+      let globalString = concat . intersperse "\n" $ map show globals
+          functionsString = concat . intersperse "\n" $ map show functions
+          mainFunctionString = show main
+      in "TACFile:\n" ++ globalString ++ "\n" ++ functionsString ++ "\n\n" ++ mainFunctionString
 
   emptyTACFile :: TACFile
-  emptyTACFile = TACFile [] []
+  emptyTACFile = TACFile [] [] Nothing
 
   printFunName :: FunctionName
   printFunName = "print"
@@ -104,7 +106,7 @@ module ThreeAddressCode where
   incPars :: Locations -> (TACLocation, Locations)
   incPars (Locations globals pars locals exps) = (Parameter pars, Locations globals (pars + 1) locals exps)
   incLocals :: Locations -> (TACLocation, Locations)
-  incLocals (Locations globals pars locals exps) = (Local locals, Locations globals pars (locals + 1) exps)
+  incLocals (Locations globals pars locals exps) = (Local locals, Locations globals pars (locals + 1) (exps + 1))
   incExps :: Locations -> (TACLocation, Locations)
   incExps (Locations globals pars locals exps) = (Local exps, Locations globals pars locals $ exps + 1)
   -- enterBlock :: Locations -> Locations
@@ -114,11 +116,14 @@ module ThreeAddressCode where
   emptyLocations :: Locations
   emptyLocations = Locations 0 0 0 0
 
-  newParEnv :: LocEnv -> Locations -> (LocEnv, Locations)
-  newParEnv env (Locations globals _ _ _) = (Environment.push env, Locations globals 0 0 0)
+  -- newParEnv :: LocEnv -> Locations -> (LocEnv, Locations)
+  -- newParEnv env (Locations globals _ _ _) = (Environment.push env, Locations globals 0 0 0)
 
-  newFunBodyEnv :: LocEnv -> Locations -> (LocEnv, Locations)
-  newFunBodyEnv env (Locations globals pars _ _) = (Environment.push env, Locations globals pars 0 0)
+  -- newFunBodyEnv :: LocEnv -> Locations -> (LocEnv, Locations)
+  -- newFunBodyEnv env (Locations globals pars _ _) = (Environment.push env, Locations globals pars 0 0)
+
+  newFunBodyEnv :: Locations -> Locations
+  newFunBodyEnv (Locations globals _ _ _) = Locations globals 0 0 0
 
   newBodyEnv :: LocEnv -> Locations -> (LocEnv, Locations)
   newBodyEnv env locs = (Environment.push env, locs)
@@ -140,7 +145,7 @@ module ThreeAddressCode where
                                                   GreaterOp -> GtrCode
                                                   GreaterEqualOp -> GeqCode
                                                tac = makeTAC (InAddr leftAddr) (InAddr rightAddr) $ OutAddr binAddr
-                                           in CompiledExp [tac] env locs binAddr
+                                           in CompiledExp (leftTACs ++ rightTACs ++ [tac]) env locs3 binAddr
 
   unaryExpToTACs :: LocEnv -> Locations -> Expression -> UnOperator -> CompiledExp
   unaryExpToTACs env locs exp op = let CompiledExp leftTACs env1 locs1 argAddr = expToTACs env locs exp
@@ -158,7 +163,7 @@ module ThreeAddressCode where
   compileArgs env locs exps = let (env1, locs1, tacs1, inputAddresses) = foldl (\(env, locs, tacs, argInputAddresses) exp -> 
                                                                          let CompiledExp tacs1 env1 locs1 argInputAddr = expToTACs env locs exp
                                                                          in (env1, locs1, (tacs1 ++ tacs), (InAddr argInputAddr : argInputAddresses))) (env, locs, [], []) exps
-                              in CompiledStm (tacs1 ++ (map PuaCode inputAddresses)) env1 locs1
+                              in CompiledStm (tacs1 ++ (map ArgCode inputAddresses)) env1 locs1
 
   lookupInput :: Name -> LocEnv -> TACLocation -- TODO should produce an error if name cannot be found
   lookupInput name env = let location = case Environment.lookup name env of
@@ -246,15 +251,16 @@ module ThreeAddressCode where
   declarationToTACs env locs decl@(VarDeclaration _ _) = globalVarDefToTACs env locs decl
   declarationToTACs env locs (FunDeclaration _ name pars body) = 
     let (address, updatedLocs) = incGlobals locs -- Add function as a Global loc
+        updatedLocs' = newFunBodyEnv updatedLocs
         addedEnv = Environment.insert name address env
         parsPushedEnv = Environment.push env
         (parsEnv, parsLocs) = foldl (\(env, locs) (VarDeclaration _ parName) -> 
                                        let (parAddr, locs1) = incPars locs
                                            parAddedEnv = Environment.insert parName parAddr env
-                                       in (parAddedEnv, locs1)) (parsPushedEnv, updatedLocs) pars
+                                       in (parAddedEnv, locs1)) (parsPushedEnv, updatedLocs') pars
         CompiledStm bodyTacs bodyEnv' bodyLocs' = bodyToTACs parsEnv parsLocs body
         fullFunctionTacs = (BeginFunCode name) : bodyTacs `snoc` EndFunCode name
-    in CompiledStm fullFunctionTacs addedEnv updatedLocs -- Use addedEnv instead of bodyEnv', since we don't need the two pushed frames in the rest of the global scope
+    in CompiledStm fullFunctionTacs addedEnv bodyLocs' -- Use addedEnv instead of bodyEnv', since we don't need the two pushed frames in the rest of the global scope
 
   -- generateTACs' :: LocEnv -> Locations -> Declarations -> (TACs, Locations)
   -- generateTACs' env locs [] = []
@@ -267,22 +273,31 @@ module ThreeAddressCode where
 
   generateTACs' :: LocEnv -> Locations -> Declarations -> TACFile -> TACFile
   generateTACs' env locs [] acc = acc
-  generateTACs' env locs (decl@(VarDeclaration _ _):decls) (TACFile globalVars functions) =
+  generateTACs' env locs (decl@(VarDeclaration _ _):decls) (TACFile globalVars functions main) =
     let globalVar = GlobalVarTAC (globals locs) defaultGlobalVarSize Nothing
         CompiledStm tacs1 env1 locs1 = declarationToTACs env locs decl
-        newAcc = TACFile (globalVars `snoc` globalVar) functions
+        newAcc = TACFile (globalVars `snoc` globalVar) functions main
     in generateTACs' env1 locs1 decls newAcc
-  generateTACs' env locs (decl@(FunDeclaration _ name _ _):decls) (TACFile globalVars functions)   =
+  generateTACs' env locs (decl@(FunDeclaration _ name _ _):decls) (TACFile globalVars functions main)   =
     let CompiledStm tacs1 env1 locs1 = declarationToTACs env locs decl
         nrOfPars = pars locs1
         nrOfLocals = locals locs1
         nrOfExps = exps locs1
         functionTAC = FunctionTAC name nrOfPars nrOfLocals nrOfExps tacs1
-        newAcc = TACFile globalVars (functions `snoc` functionTAC)
+        newAcc =  if name == "main"
+                  then TACFile globalVars functions $ Just functionTAC
+                  else TACFile globalVars (functions `snoc` functionTAC) main
     in generateTACs' env1 locs1 decls newAcc
 
+  transformTACFile :: TACFile -> TACFile
+  transformTACFile (TACFile decls functions (Just (FunctionTAC fTACName fTACNrOfPars fTACNrOfLocals fTACNrOfExps fTACBody))) =
+    let replaceRet = \tac -> case tac of Rt0Code -> ExtCode; other -> other
+        replacedTACs = map replaceRet fTACBody
+    in TACFile decls functions . Just $ FunctionTAC fTACName fTACNrOfPars fTACNrOfLocals fTACNrOfExps replacedTACs
+  transformTACFile tacFile = tacFile
+
   generateTACs :: Declarations -> TACFile
-  generateTACs decls = generateTACs' Environment.empty emptyLocations decls emptyTACFile
+  generateTACs decls = transformTACFile $ generateTACs' Environment.empty emptyLocations decls emptyTACFile
 
   -- findTACsBelonging :: TACs -> TACs -> (TACs, TACs)
   -- findTACsBelonging acc [] = (reverse acc, [])

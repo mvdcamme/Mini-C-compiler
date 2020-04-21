@@ -6,10 +6,12 @@ import Data.Char
 import Data.List
 import Debug.Trace
 import System.Environment
+import System.Exit
 
 import AST
 import Environment
-import LLVM_ATT
+-- import MASM_86_Compile
+import TASM_86_Compile
 import ThreeAddressCode
 import Type
 import TypeChecking
@@ -247,11 +249,16 @@ main = do args <- getArgs
              then putStrLn "Exactly one argument, filename, expected"
              else (readFile $ head args) >>= \(fileContent) ->
                   let (decls, _) = runState (parser $ lexer fileContent) nilLocation
-                  in do print "##### TYPES #####"
-                        print $ TypeChecking.typeCheckDeclarations decls
-                        print "##### DECLARATIONS #####"
+                  in do print "##### DECLARATIONS #####"
                         putStrLn $ concat (intersperse "\n" $ map show decls)
+                        print "##### TYPES #####"
+                        print $ TypeChecking.typeCheckDeclarations decls
                         print "##### TACS #####"
-                        print $ generateTACs decls
+                        let tacFile = generateTACs decls
+                        print tacFile
                         -- putStrLn $ concat (intersperse "\n" . map show $ generateTACs decls)
-}
+                        print "##### Assembly #####"
+                        let compiled = compile tacFile
+                        putStrLn compiled
+                        writeFile "output/output.asm" compiled
+  }

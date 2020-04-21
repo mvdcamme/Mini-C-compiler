@@ -1,6 +1,7 @@
 module TypeChecking where
 
     import Debug
+    import Debug.Trace
     import Text.Printf
 
     import AST
@@ -131,7 +132,8 @@ module TypeChecking where
                                                                     typeCheckBlock env thenBody
                                                                     typeCheckBlock env elseBody
                                                                     return ()
-    typeCheckStatement env (Return1Stmt exp) = typeCheckExp env exp >> return ()
+    typeCheckStatement env Return0Stmt = return () -- should check whether function's return-type is void
+    typeCheckStatement env (Return1Stmt exp) = typeCheckExp env exp >> return () -- should check whether matches function's return type
     typeCheckStatement env (ReadStmt lexp) = typeCheckLExp env lexp >> return ()
     typeCheckStatement env (WriteStmt lexp) = typeCheckLExp env lexp >> return ()
     typeCheckStatement env (WhileStmt _ pred body _) = typeCheckExp env pred >> typeCheckBlock env body >> return ()
@@ -140,10 +142,16 @@ module TypeChecking where
     typeCheckStatements _ [] = return ()
     typeCheckStatements env (stmt:stmts) = (typeCheckStatement env stmt) >> (typeCheckStatements env stmts)
 
-    declarationsToTypes :: [Declaration] -> [Type]
+    declarationsToTypes :: Declarations -> [Type]
     declarationsToTypes [] = []
     declarationsToTypes ((VarDeclaration typ _):decls) = typ : declarationsToTypes decls
     declarationsToTypes ((FunDeclaration retTyp _ parDecls _):decls) = (ArrowType (declarationsToTypes parDecls) retTyp) : declarationsToTypes decls
+
+    typeCheckFunction :: TypeEnvironment -> Type -> Declarations -> Body -> TypeChecked ()
+    typeCheckFunction env returnType pars body =
+      let frameAddedEnv = Environment.push env -- Push new frame for the function's parameters
+      in do updatedEnv <- typeCheckDeclarations' frameAddedEnv pars -- Add parameters to the environment
+            typeCheckBlock updatedEnv body -- Typecheck the function's body
 
     typeCheckDeclaration :: TypeEnvironment -> Declaration -> TypeChecked TypeEnvironment
     typeCheckDeclaration env (VarDeclaration typ name) = return $ Environment.insert name typ env
@@ -152,11 +160,11 @@ module TypeChecking where
                                                                           typeCheckBlock updatedEnv body -- Typecheck the function's body
                                                                           return $ Environment.insert name (ArrowType (declarationsToTypes decls) typ) env -- Insert the function declaration into the _original_ environment
 
-    typeCheckDeclarations' :: TypeEnvironment -> [Declaration] -> TypeChecked TypeEnvironment
+    typeCheckDeclarations' :: TypeEnvironment -> Declarations -> TypeChecked TypeEnvironment
     typeCheckDeclarations' env [] = return env
     typeCheckDeclarations' env (decl:decls) = typeCheckDeclaration env decl >>= \(updatedEnv) -> typeCheckDeclarations' updatedEnv decls
 
-    typeCheckDeclarations :: [Declaration] -> TypeChecked TypeEnvironment
+    typeCheckDeclarations :: Declarations -> TypeChecked TypeEnvironment
     typeCheckDeclarations decls = let emptyEnv = Environment.empty
                                       initEnv = Environment.insert "print" (ArrowType [Atom IntType] $ Atom VoidType) emptyEnv 
                                   in typeCheckDeclarations' initEnv decls
@@ -168,8 +176,6 @@ module TypeChecking where
     typeCheckBlock :: TypeEnvironment -> Body -> TypeChecked ()
     typeCheckBlock env body = let frameAddedEnv = Environment.push env
                               in typeCheckBlock' frameAddedEnv body
-
-
 
     --typeCheck :: Declarations -> TypeResult
 

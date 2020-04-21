@@ -1,4 +1,4 @@
-module TASM_86 where
+module MASM_86 where
 
   import Data.Char
   import Data.List
@@ -8,37 +8,26 @@ module TASM_86 where
   import ThreeAddressCode
 
   data Register             = BP
-                              | EBP
                               | IP
                               | SP
-                              | ESP
                               | DI
                               | SI
-                              | CS
-                              | DS
-                              | ES
-                              | FS
-                              | GS
                               -- General purpose registers
-                              | EAX
                               | AX
                               | AL
                               | AH
-                              | EBX
                               | BX
                               | BL
                               | BH
-                              | ECX
                               | CX
                               | CL
                               | CH
-                              | EDX
                               | DX
                               | DL
                               | DH
                               deriving (Show, Eq)
 
-  data Arg                  =  Literal Integer
+  data Arg                  = Literal Integer
                               | LiteralWithString String
                               | Register Register
                               | Parameter Integer
@@ -62,14 +51,8 @@ module TASM_86 where
                               | LabelId Integer
                               deriving (Show, Eq)
 
-  data Style                = Flat
-                              | Text
-                              deriving (Show, Eq)
-  data Assumption           = Assumption Register Style
-                              deriving (Show, Eq)
-
-  data Operation            = MovOp Arg Arg SizeEnum
-                              | PushOp Arg SizeEnum
+  data Operation            = MovOp Arg Arg
+                              | PushOp Arg
                               | PopOp Arg
                               | CallOp FunctionName
                               | EndprocOp FunctionName
@@ -89,48 +72,47 @@ module TASM_86 where
                               | IntOp Arg -- Interrupt
                               | StiOp -- set The Interrupt Flag => enable interrupts
                               | CldOp -- clear The Direction Flag
-                              | PopAd
-                              | PushAd
                               -- Directives
-                              | Ideal
-                              | P386
-                              | ModelFlatC -- TODO Split this up
-                              | Assume [Assumption]
+                              | Model ModelSizeEnum
                               | StartSegment Segment
                               | End FunctionName
                               | Empty -- In case you want to add a newline, or a line consisting of only a comment
                               deriving (Show, Eq)
   type Operations           = [Operation]
 
+  data FullOperation        = FullOp Operation (Maybe String)
+                              deriving (Show, Eq)
+  type FullOperations       = [FullOperation]
+
   bp :: Arg
   bp = Register BP
-  ebp :: Arg
-  ebp = Register EBP
   sp :: Arg
   sp = Register SP
-  esp :: Arg
-  esp = Register ESP
 
-  eax :: Arg
-  eax = Register EAX
   ax :: Arg
   ax = Register AX
   ah :: Arg
   ah = Register AH
   al :: Arg
   al = Register AL
-  ebx :: Arg
-  ebx = Register EBX
   bx :: Arg
   bx = Register BX
-  ecx :: Arg
-  ecx = Register ECX
+  bh :: Arg
+  bh = Register BH
+  bl :: Arg
+  bl = Register BL
   cx :: Arg
   cx = Register CX
-  edx :: Arg
-  edx = Register EDX
+  ch :: Arg
+  ch = Register CH
+  cl :: Arg
+  cl = Register CL
   dx :: Arg
   dx = Register DX
+  dh :: Arg
+  dh = Register DH
+  dl :: Arg
+  dl = Register DL
 
   retReg :: Arg -- The register where a function's return value will be placed in
-  retReg = eax
+  retReg = ax
