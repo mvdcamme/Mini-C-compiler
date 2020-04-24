@@ -49,7 +49,7 @@ module TypeChecking where
     typeOfArrayRefExp env arrayExp indexExp = do arrayType <- typeCheckExp env arrayExp
                                                  typeOfArrayType arrayType
 
-    typeOfIntegralUnOp :: TypeEnvironment -> UnOperator -> Expression -> (Type -> TypeChecked Bool) -> TypeResult
+    typeOfIntegralUnOp :: Show a => TypeEnvironment -> a -> Expression -> (Type -> TypeChecked Bool) -> TypeResult
     typeOfIntegralUnOp env unOp exp pred = do tExp <- typeCheckExp env exp
                                               cond <- isIntegralType tExp
                                               if cond
@@ -92,6 +92,9 @@ module TypeChecking where
     typeOfUnaryExp :: TypeEnvironment -> Expression -> UnOperator -> TypeResult
     typeOfUnaryExp env exp unOp = typeOfIntegralUnOp env unOp exp isIntegralType
 
+    typeOfUnaryModifyingExp :: TypeEnvironment -> LeftExpression -> UnModifyingOperator -> TypeResult
+    typeOfUnaryModifyingExp env lexp unOp = typeOfIntegralUnOp env unOp (LeftExp lexp) isIntegralType
+
     typeOfVariableRefExp :: TypeEnvironment -> Name -> TypeResult
     typeOfVariableRefExp env var = case Environment.lookup var env of
       Just t -> return t
@@ -109,6 +112,7 @@ module TypeChecking where
         FunctionAppExp name exps -> typeOfFunctionAppExp env name exps
         LengthExp exp -> typeOfLengthExp env exp
         UnaryExp unOp exp -> typeOfUnaryExp env exp unOp
+        UnaryModifyingExp unOp lexp -> typeOfUnaryModifyingExp env lexp unOp
         LeftExp lexp -> typeCheckLExp env lexp
 
     typeCheckStatement :: TypeEnvironment -> Statement -> TypeChecked ()
@@ -128,10 +132,14 @@ module TypeChecking where
                                          else return ()
     typeCheckStatement env (BlockStmt block) = typeCheckBlock env block >> return ()
     typeCheckStatement env (ExpStmt exp) = typeCheckExp env exp >> return ()
-    typeCheckStatement env (IfStmt pred thenBody _ elseBody _) = do typeCheckExp env pred -- Type of the predicate can be everything: is not restricted to an integral type
-                                                                    typeCheckBlock env thenBody
-                                                                    typeCheckBlock env elseBody
-                                                                    return ()
+    typeCheckStatement env (IfElseStmt pred thenBody _ elseBody _) = do typeCheckExp env pred -- Type of the predicate can be everything: is not restricted to an integral type
+                                                                        typeCheckBlock env thenBody
+                                                                        typeCheckBlock env elseBody
+                                                                        return ()
+    typeCheckStatement env (IfStmt pred thenBody _) =
+      do typeCheckExp env pred -- Type of the predicate can be everything: is not restricted to an integral type
+         typeCheckBlock env thenBody
+         return ()
     typeCheckStatement env Return0Stmt = return () -- should check whether function's return-type is void
     typeCheckStatement env (Return1Stmt exp) = typeCheckExp env exp >> return () -- should check whether matches function's return type
     typeCheckStatement env (ReadStmt lexp) = typeCheckLExp env lexp >> return ()

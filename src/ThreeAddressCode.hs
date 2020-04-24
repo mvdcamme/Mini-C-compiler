@@ -33,34 +33,44 @@ module ThreeAddressCode where
   type FunctionName =         String
   type VarName =              String
 
+                              -- Arithmetic
   data TAC =                  AddCode Input Input Output      -- Add
                               | SubCode Input Input Output    -- Subtract
                               | MulCode Input Input Output    -- Multiply
                               | DivCode Input Input Output    -- Division
+                              | InvCode Input Output          -- Inverse
+                              | PrefixIncCode Input Output    -- Prefix Increment
+                              | SuffixIncCode Input Output    -- Suffix Increment
+                              | PrefixDecCode Input Output    -- Prefix Decrement
+                              | SuffixDecCode Input Output    -- Suffix Decrement
+                              -- Comparison
                               | EqlCode Input Input Output    -- Equal
                               | NqlCode Input Input Output    -- Not equal
                               | LssCode Input Input Output    -- Less than
                               | LeqCode Input Input Output    -- Less than / Equal
                               | GtrCode Input Input Output    -- Greater than
                               | GeqCode Input Input Output    -- Greater than / Equal
-                              | AsnCode Input Output          -- Assign: should also have an output if the assignment itself produces a value
-                              | MovCode Input Output          -- Move: basically same as Assign, except the move itself doesn't produce an output. Mostly used to move expressions into slots
-                              | InvCode Input Output          -- Inverse
-                              | IncCode Input Output          -- Increment
-                              | DecCode Input Output          -- Decrement
+                              -- Logical operators
+                              | AndCode Input Input           -- Logical And
+                              | OrCode Input Input            -- Logical Or
                               | NotCode Input Output          -- Logical Not
-                              | ArgCode Input                 -- Pass argument to function
+                              | XorCode Input Output          -- Logical Exclusive Or
+                              -- Labels and jumps
                               | LblCode Marker                -- Define label with marker
                               | JmpCode Marker                -- Unconditional jump
-                              | JezCode Input Marker          -- Jump if input equals zero
                               | JnzCode Input Marker          -- Jump if input does not equal zero
-                              | ExtCode                       -- Exit program: TODO should get an input for the exit code
-                              | Rt0Code                       -- Return from function without value
-                              | Rt1Code Input                 -- Return from function with value
+                              | JzCode Input Marker          -- Jump if input equals zero
+                              -- Function calls and returns
+                              | ArgCode Input                 -- Pass argument to function
                               | CllCode FunctionName Output   -- Call function
                               | PrtCode                       -- Call to print function
-                              | BeginFunCode FunctionName
-                              | EndFunCode FunctionName
+                              | Rt0Code                       -- Return from function without value
+                              | Rt1Code Input                 -- Return from function with value
+                              -- Assignments
+                              | AsnCode Input Output          -- Assign: should also have an output if the assignment itself produces a value
+                              -- Machine operations
+                              | MovCode Input Output          -- Move: basically same as Assign, except the move itself doesn't produce an output. Mostly used to move expressions into slots
+                              | ExtCode                       -- Exit program: TODO should get an input for the exit code
                               deriving (Show, Eq)
 
   type TACs =                 [TAC]
@@ -148,16 +158,26 @@ module ThreeAddressCode where
                                            in CompiledExp (leftTACs ++ rightTACs ++ [tac]) env locs3 binAddr
 
   unaryExpToTACs :: LocEnv -> Locations -> Expression -> UnOperator -> CompiledExp
-  unaryExpToTACs env locs exp op = let CompiledExp leftTACs env1 locs1 argAddr = expToTACs env locs exp
-                                       (outputAddr, locs2) = incExps locs1
-                                       makeTAC = case op of
-                                                 IncOp      -> IncCode
-                                                 DecOp      -> DecCode
-                                                 NotOp      -> NotCode
-                                                 MinusUnOp  -> InvCode
-                                       tac = makeTAC (InAddr argAddr) $ OutAddr outputAddr
-                                   in CompiledExp [tac] env1 locs2 outputAddr
+  unaryExpToTACs env locs exp op =
+    let CompiledExp leftTACs env1 locs1 argAddr = expToTACs env locs exp
+        (outputAddr, locs2) = incExps locs1
+        makeTAC = case op of
+                    NotOp     -> NotCode
+                    MinusUnOp -> InvCode
+        tac = makeTAC (InAddr argAddr) $ OutAddr outputAddr
+    in CompiledExp (leftTACs ++ [tac]) env1 locs2 outputAddr
 
+  unaryModifyingExpToTACs :: LocEnv -> Locations -> LeftExpression -> UnModifyingOperator -> CompiledExp
+  unaryModifyingExpToTACs env locs lexp op =
+    let CompiledExp leftTACs env1 locs1 argAddr = expToTACs env locs (LeftExp lexp)
+        (outputAddr, locs2) = incExps locs1
+        makeTAC = case op of
+                    PrefixIncOp -> PrefixIncCode
+                    SuffixIncOp -> SuffixIncCode
+                    PrefixDecOp -> PrefixDecCode
+                    SuffixDecOp -> SuffixDecCode
+        tac = makeTAC (InAddr argAddr) $ OutAddr outputAddr
+    in CompiledExp (leftTACs ++ [tac]) env1 locs2 outputAddr
 
   compileArgs :: LocEnv -> Locations -> Expressions -> CompiledStm
   compileArgs env locs exps = let (env1, locs1, tacs1, inputAddresses) = foldl (\(env, locs, tacs, argInputAddresses) exp -> 
@@ -184,10 +204,11 @@ module ThreeAddressCode where
   expToTACs env locs atomic@(QCharExp char) = atomicToTACs env locs $ CharValue char
   expToTACs env locs (BinaryExp op left right) = binaryExpToTACs env locs left right op
   expToTACs env locs (LeftExp (VariableRefExp name)) = let address = lookupInput name env
-                                                           (outputAddr, locs1) = incExps locs
-                                                           tac = MovCode (InAddr address) $ OutAddr outputAddr
-                                                       in CompiledExp [tac] env locs1 outputAddr
+                                                           -- (outputAddr, locs1) = incExps locs
+                                                           -- tac = MovCode (InAddr address) $ OutAddr outputAddr
+                                                       in CompiledExp [] env locs address
   expToTACs env locs (UnaryExp op exp) = unaryExpToTACs env locs exp op
+  expToTACs env locs (UnaryModifyingExp op lexp) = unaryModifyingExpToTACs env locs lexp op
   expToTACs env locs (FunctionAppExp name args) = let CompiledStm evalArgsTACs env1 locs1 = compileArgs env locs args 
                                                       -- fnInput = InAddr $ lookupInput name env -- Should use the function's name instead of the address
                                                       (retAddress, locs2) = incExps locs1
@@ -197,17 +218,38 @@ module ThreeAddressCode where
                                                       allTacs = evalArgsTACs `snoc` callCode
                                                   in CompiledExp allTacs env1 locs2 retAddress
 
-  ifStmtToTacs :: LocEnv -> Locations -> Statement -> CompiledStm
-  ifStmtToTacs env locs (IfStmt condExp thenBody m1 elseBody m2) =
+  ifElseStmtToTacs :: LocEnv -> Locations -> Statement -> CompiledStm
+  ifElseStmtToTacs env locs (IfElseStmt condExp thenBody m1 elseBody m2) =
     let lbl1 = LblCode m1
         lbl2 = LblCode m2
         (CompiledExp condExpTacs env1 locs1 condExpOutputAddr) = expToTACs env locs condExp
-        condTacs = condExpTacs `snoc` JezCode (InAddr condExpOutputAddr) m1
+        condTacs = condExpTacs `snoc` JzCode (InAddr condExpOutputAddr) m1
         CompiledStm thenBodyTacs _ locs2 = bodyToTACs env1 locs1 thenBody -- Can ignore the env used in the body
         thenTacs = thenBodyTacs `snoc` JmpCode m2 `snoc` lbl1
         CompiledStm elseBodyTacs _ locs3 = bodyToTACs env1 locs2 elseBody -- Can ignore the env used in the body
         allTacs = condTacs ++ thenTacs ++ elseBodyTacs `snoc` lbl2
     in CompiledStm allTacs env locs3
+
+  ifStmtToTacs :: LocEnv -> Locations -> Statement -> CompiledStm
+  ifStmtToTacs env locs (IfStmt condExp thenBody m1) = 
+    let lbl1 = LblCode m1
+        (CompiledExp condExpTacs env1 locs1 condExpOutputAddr) = expToTACs env locs condExp
+        condTacs = condExpTacs `snoc` JzCode (InAddr condExpOutputAddr) m1
+        CompiledStm thenBodyTacs _ locs2 = bodyToTACs env1 locs1 thenBody -- Can ignore the env used in the body
+        thenTacs = thenBodyTacs `snoc` lbl1
+        allTacs = condTacs ++ thenTacs
+    in CompiledStm allTacs env locs2
+
+  whileStmtToTacs :: LocEnv -> Locations -> Statement -> CompiledStm
+  whileStmtToTacs env locs (WhileStmt m1 condExp body m2) =
+    let lbl1 = LblCode m1
+        lbl2 = LblCode m2
+        (CompiledExp condExpTacs env1 locs1 condExpOutputAddr) = expToTACs env locs condExp
+        condTacs = condExpTacs `snoc` JzCode (InAddr condExpOutputAddr) m2
+        CompiledStm bodyTacs _ locs2 = bodyToTACs env1 locs1 body -- Can ignore the env used in the body
+        allBodyTacs = bodyTacs `snoc` JmpCode m1
+        allTacs = lbl1 : condTacs ++ allBodyTacs `snoc` lbl2
+    in CompiledStm allTacs env locs2
 
   stmtToTacs :: LocEnv -> Locations -> Statement -> CompiledStm
   stmtToTacs env locs (ExpStmt exp) = let (CompiledExp tacs env' locs' _) = expToTACs env locs exp
@@ -217,7 +259,9 @@ module ThreeAddressCode where
                                                                    input = InAddr outputAddr
                                                                    tac = AsnCode input $ OutAddr toWrite
                                                                in CompiledStm (tacs `snoc` tac) env' locs'
-  stmtToTacs env locs ifStmt@(IfStmt _ _ _ _ _) = ifStmtToTacs env locs ifStmt
+  stmtToTacs env locs ifElseStmt@IfElseStmt{} = ifElseStmtToTacs env locs ifElseStmt
+  stmtToTacs env locs ifStmt@IfStmt{} = ifStmtToTacs env locs ifStmt
+  stmtToTacs env locs whileStmt@WhileStmt{} = whileStmtToTacs env locs whileStmt
   stmtToTacs env locs Return0Stmt = CompiledStm [Rt0Code] env locs
   stmtToTacs env locs (Return1Stmt exp) = let (CompiledExp expTacs env' locs' outputAddr) = expToTACs env locs exp
                                               retTac = Rt1Code $ InAddr outputAddr
@@ -259,14 +303,8 @@ module ThreeAddressCode where
                                            parAddedEnv = Environment.insert parName parAddr env
                                        in (parAddedEnv, locs1)) (parsPushedEnv, updatedLocs') pars
         CompiledStm bodyTacs bodyEnv' bodyLocs' = bodyToTACs parsEnv parsLocs body
-        fullFunctionTacs = (BeginFunCode name) : bodyTacs `snoc` EndFunCode name
+        fullFunctionTacs = bodyTacs
     in CompiledStm fullFunctionTacs addedEnv bodyLocs' -- Use addedEnv instead of bodyEnv', since we don't need the two pushed frames in the rest of the global scope
-
-  -- generateTACs' :: LocEnv -> Locations -> Declarations -> (TACs, Locations)
-  -- generateTACs' env locs [] = []
-  -- generateTACs' env locs (decl:decls) = let CompiledStm tacs1 env1 locs1 = declarationToTACs env locs decl
-  --                                           (tacs2, locs2) = generateTACs' env1 locs1 decls
-  --                                       in (tacs1 ++ tacs2, locs2)
 
   defaultGlobalVarSize :: Integer
   defaultGlobalVarSize = 4

@@ -38,11 +38,15 @@ module TASM_86 where
                               | DH
                               deriving (Show, Eq)
 
+  data MemoryReference      = Parameter Integer
+                              | Indirect Integer Register
+                              | Global Integer
+                              deriving (Show, Eq)
+
   data Arg                  =  Literal Integer
                               | LiteralWithString String
                               | Register Register
-                              | Parameter Integer
-                              | Indirect Integer Register
+                              | Memory MemoryReference
                               deriving (Show, Eq)
 
   data SizeEnum             = SizeByte
@@ -76,7 +80,8 @@ module TASM_86 where
                               | StartprocOp FunctionName
                               | LblOp Label
                               | JmpOp Label
-                              -- | ArgOp Integer SizeEnum -- discontinued
+                              | JzOp Label
+                              | JnzOp Label
                               | AddOp Arg Arg
                               | SubOp Arg Arg
                               | XorOp Arg Arg
@@ -84,7 +89,6 @@ module TASM_86 where
                               | DivOp Arg
                               | IncOp Arg
                               | DecOp Arg
-                              | JnzOp Label
                               | RetOp
                               | IntOp Arg -- Interrupt
                               | StiOp -- set The Interrupt Flag => enable interrupts
@@ -101,6 +105,9 @@ module TASM_86 where
                               | Empty -- In case you want to add a newline, or a line consisting of only a comment
                               deriving (Show, Eq)
   type Operations           = [Operation]
+
+  data GlobalVarDefinition  = GlobalVarDefinition VarName SizeEnum (Maybe Integer)
+  type GlobalVarDefinitions = [GlobalVarDefinition]
 
   bp :: Arg
   bp = Register BP

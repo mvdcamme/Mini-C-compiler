@@ -38,8 +38,6 @@ module MASM_86_Compile where
   makeMovOp arg1 arg2 = [MovOp arg1 arg2]
 
   compileTAC :: TAC -> Operations
-  compileTAC (BeginFunCode name) = [] -- Code generated in compileFunTAC
-  compileTAC (EndFunCode name) = []   -- Code generated in compileFunTAC
   compileTAC PrtCode = [CallOp "printInt"]
   compileTAC (MovCode in1 out) =
     let arg1 = inputToArg in1

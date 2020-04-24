@@ -19,7 +19,8 @@ module AST where
     data Statement =                AssignStmt LeftExpression Expression
                                     | BlockStmt Body
                                     | ExpStmt Expression 
-                                    | IfStmt Expression Body Marker Body Marker
+                                    | IfElseStmt Expression Body Marker Body Marker
+                                    | IfStmt Expression Body Marker
                                     | Return1Stmt Expression                        -- Returns a value
                                     | Return0Stmt                                   -- Does not return a value
                                     | ReadStmt LeftExpression
@@ -39,6 +40,7 @@ module AST where
     data Expression =               LeftExp LeftExpression
                                     | BinaryExp BinOperator Expression Expression
                                     | UnaryExp UnOperator Expression
+                                    | UnaryModifyingExp UnModifyingOperator LeftExpression
                                     | FunctionAppExp Name Expressions
                                     | LengthExp Expression
                                     | NumberExp Integer
@@ -61,8 +63,12 @@ module AST where
 
     data UnOperator =               MinusUnOp
                                     | NotOp
-                                    | IncOp
-                                    | DecOp
+                                    deriving (Show, Eq)
+
+    data UnModifyingOperator        = PrefixIncOp
+                                    | PrefixDecOp
+                                    | SuffixIncOp
+                                    | SuffixDecOp
                                     deriving (Show, Eq)
 
     type Location =                 Integer

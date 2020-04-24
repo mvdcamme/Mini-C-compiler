@@ -7,7 +7,7 @@ module TASM_86_Compile where
   import AST
   import TASM_86
   import TASM_86_Natives
-  import ThreeAddressCode
+  import ThreeAddressCode as TAC
 
   addressToLocalOffset :: Address -> Integer
   addressToLocalOffset address = (-1 - address) * 4
@@ -16,55 +16,38 @@ module TASM_86_Compile where
   idxToParOffset idx = 8 + (idx * 4)
 
   inputToArg :: Input -> Arg
-  inputToArg (ThreeAddressCode.Literal (IntValue i)) = TASM_86.Literal i
-  inputToArg (ThreeAddressCode.Literal (CharValue c)) = TASM_86.Literal . toInteger $ ord c
-  inputToArg (ThreeAddressCode.InAddr (ThreeAddressCode.Local address)) = Indirect (addressToLocalOffset address) BP
-  inputToArg (ThreeAddressCode.InAddr (ThreeAddressCode.Parameter address)) = TASM_86.Parameter address
+  inputToArg (TAC.Literal (IntValue i)) = TASM_86.Literal i
+  inputToArg (TAC.Literal (CharValue c)) = TASM_86.Literal . toInteger $ ord c
+  inputToArg (TAC.InAddr (TAC.Local address)) = Memory $ Indirect (addressToLocalOffset address) BP
+  inputToArg (TAC.InAddr (TAC.Parameter address)) = Memory $ TASM_86.Parameter address
+  inputToArg (TAC.InAddr (TAC.Global address)) = Memory $ TASM_86.Global address
 
   outputToArg :: Output -> Arg
-  outputToArg (ThreeAddressCode.OutAddr (Local address)) = Indirect (addressToLocalOffset address) BP
-  outputToArg (ThreeAddressCode.OutAddr (ThreeAddressCode.Parameter address)) = TASM_86.Parameter address
+  outputToArg (TAC.OutAddr (Local address)) = Memory $ Indirect (addressToLocalOffset address) BP
+  outputToArg (TAC.OutAddr (TAC.Parameter address)) = Memory $ TASM_86.Parameter address
+  outputToArg (TAC.OutAddr (TAC.Global address)) = Memory $ TASM_86.Global address
 
   makeMovOp :: Arg -> Arg -> SizeEnum -> Operations
   -- Can't directly move between two memory locations
-  makeMovOp dest@(Indirect _ _) source@(Indirect _ _) size =
+  makeMovOp dest@(Memory _) source@(Memory _) size =
     [PushOp eax size, MovOp eax source size, MovOp dest eax size, PopOp eax]
-  makeMovOp arg1@(TASM_86.Parameter _) arg2@(TASM_86.Parameter _) size =
-    [PushOp eax size, MovOp eax arg2 size, MovOp arg1 eax size, PopOp eax]
-  makeMovOp arg1@(Indirect _ _) arg2@(TASM_86.Parameter _) size =
-    [PushOp eax size, MovOp eax arg2 size, MovOp arg1 eax size, PopOp eax]
-  makeMovOp arg2@(TASM_86.Parameter _) arg1@(Indirect _ _) size =
-    [PushOp eax size, MovOp eax arg2 size, MovOp arg1 eax size, PopOp eax]
-  makeMovOp arg1 arg2 size = [MovOp arg1 arg2 size]
+  makeMovOp dest source size = [MovOp dest source size]
+
+  makePrefixOp :: Input -> Output -> (Input -> Input -> Output -> TAC) -> Operations
+  makePrefixOp in1 out create = 
+    let in2 = TAC.Literal $ IntValue 1
+        arg1 = inputToArg in1
+        out' = outputToArg out
+    in (compileTAC $ create in1 in2 out) ++
+       makeMovOp arg1 out' SizeDoubleWord
+
+  makeConditionalJump :: Input -> Marker -> (Label -> Operation) -> Operations
+  makeConditionalJump in1 (Marker loc) create =
+    let arg1 = inputToArg in1
+    in [CmpOp arg1 $ TASM_86.Literal 0, create $ LabelId loc]
 
   compileTAC :: TAC -> Operations
-  compileTAC (BeginFunCode name) = [] -- Code generated in compileFunTAC
-  compileTAC (EndFunCode name) = []   -- Code generated in compileFunTAC
-  compileTAC PrtCode = [CallOp "printInt"]
-  compileTAC (MovCode in1 out) =
-    let arg1 = inputToArg in1
-        out' = outputToArg out
-    in makeMovOp out' arg1 SizeDoubleWord
-  compileTAC (AsnCode in1 out) =
-    let arg1 = inputToArg in1
-        out' = outputToArg out
-    in makeMovOp out' arg1 SizeDoubleWord
-  compileTAC (ArgCode in1) = [PushOp (inputToArg in1) SizeDoubleWord]
-  compileTAC Rt0Code =
-    let functionExit = [MovOp sp bp SizeDoubleWord, PopOp bp]
-    in functionExit `snoc` RetOp
-  compileTAC (Rt1Code in1) =
-    let arg1 = inputToArg in1
-        functionExit = [MovOp sp bp SizeDoubleWord, PopOp bp]
-    in makeMovOp retReg arg1 SizeDoubleWord ++ functionExit `snoc` RetOp
-  compileTAC ExtCode =
-    [ MovOp ah (LiteralWithString "00h") SizeByte,
-      IntOp (LiteralWithString "16h"),
-      MovOp ax (LiteralWithString "4C00h") SizeWord,
-      IntOp (LiteralWithString "21h")]
-  compileTAC (CllCode name out) =
-    let out' = outputToArg out
-    in [CallOp name] ++ makeMovOp out' retReg SizeDoubleWord
+  -- Arithmetic
   compileTAC (AddCode in1 in2 out) = 
     let arg1 = inputToArg in1
         arg2 = inputToArg in2
@@ -77,6 +60,41 @@ module TASM_86_Compile where
         out' = outputToArg out
     in [PushOp eax SizeDoubleWord] ++ makeMovOp eax arg1 SizeDoubleWord ++ [SubOp eax arg2] ++
        makeMovOp out' eax SizeDoubleWord ++ [PopOp eax]
+  compileTAC (PrefixIncCode in1 out) = makePrefixOp in1 out AddCode
+  compileTAC (PrefixDecCode in1 out) = makePrefixOp in1 out SubCode
+  -- Labels and jumps
+  compileTAC (LblCode (Marker loc)) = [LblOp $ LabelId loc]
+  compileTAC (JmpCode (Marker loc)) = [JmpOp $ LabelId loc]
+  compileTAC (JnzCode in1 marker) = makeConditionalJump in1 marker JnzOp
+  compileTAC (JzCode in1 marker) = makeConditionalJump in1 marker JzOp
+  -- Function calls and returns
+  compileTAC (ArgCode in1) = [PushOp (inputToArg in1) SizeDoubleWord]
+  compileTAC (CllCode name out) =
+    let out' = outputToArg out
+    in [CallOp name] ++ makeMovOp out' retReg SizeDoubleWord
+  compileTAC PrtCode = [CallOp "printInt"]
+  compileTAC Rt0Code =
+    let functionExit = [MovOp sp bp SizeDoubleWord, PopOp bp]
+    in functionExit `snoc` RetOp
+  compileTAC (Rt1Code in1) =
+    let arg1 = inputToArg in1
+        functionExit = [MovOp sp bp SizeDoubleWord, PopOp bp]
+    in makeMovOp retReg arg1 SizeDoubleWord ++ functionExit `snoc` RetOp
+  -- Assignments
+  compileTAC (AsnCode in1 out) =
+    let arg1 = inputToArg in1
+        out' = outputToArg out
+    in makeMovOp out' arg1 SizeDoubleWord
+  -- Machine operations
+  compileTAC (MovCode in1 out) =
+    let arg1 = inputToArg in1
+        out' = outputToArg out
+    in makeMovOp out' arg1 SizeDoubleWord
+  compileTAC ExtCode =
+    [ MovOp ah (LiteralWithString "00h") SizeByte,
+      IntOp (LiteralWithString "16h"),
+      MovOp ax (LiteralWithString "4C00h") SizeWord,
+      IntOp (LiteralWithString "21h")]
 
   compileFunTAC :: FunctionTAC -> Operations
   compileFunTAC (FunctionTAC name pars locals exps tacs) =
@@ -90,6 +108,10 @@ module TASM_86_Compile where
         functionExitlude = [EndprocOp name]
         functionTACs = foldl (\acc tac -> acc ++ (compileTAC tac)) [] tacs
     in functionPrelude ++ functionEnter ++ mainSpecific ++ functionTACs ++ functionExitlude
+
+  compileGlobalVarTAC :: GlobalVarTAC -> GlobalVarDefinition
+  compileGlobalVarTAC (GlobalVarTAC addr 4 value) =
+    GlobalVarDefinition (globalAddressToName addr) SizeDoubleWord value
 
   regToString :: Register -> String
   regToString BP  = "ebp"
@@ -135,16 +157,20 @@ module TASM_86_Compile where
   sizeEnumToString SizeWord         = "word"
   sizeEnumToString SizeDoubleWord   = "dword"
 
+  globalAddressToName :: Integer -> String
+  globalAddressToName addr = "global_" ++ show addr
+
   argToString :: Arg -> String
   argToString (TASM_86.Literal i) = show i
   argToString (TASM_86.LiteralWithString s) = s
   argToString (Register reg) = regToString reg
-  argToString (TASM_86.Parameter i) = argToString (Indirect (idxToParOffset i) BP)
-  argToString (Indirect i reg) =
+  argToString (Memory (TASM_86.Parameter i)) = argToString (Memory $ Indirect (idxToParOffset i) BP)
+  argToString (Memory (Indirect i reg)) =
     let regName = regToString reg
     in if i < 0
        then "[ dword " ++ regName ++ " - " ++ (show $ abs i) ++ "]"
        else "[ dword " ++ regName ++ " + " ++ show i ++ "]"
+  argToString (Memory (TASM_86.Global addr)) = "[ offset " ++ globalAddressToName addr ++ " ]"
 
   labelToString :: Label -> String
   labelToString (LabelString string) = string
@@ -166,19 +192,25 @@ module TASM_86_Compile where
   assumptionsToString assumptions = intercalate "," $ map assumptionToString assumptions
 
   indentation :: Operation -> String
-  indentation (EndprocOp _) = ""
-  indentation (StartprocOp _) = ""
-  indentation other = "\t"
+  indentation EndprocOp{} = ""
+  indentation StartprocOp{} = ""
+  indentation Ideal = ""
+  indentation P386 = ""
+  indentation ModelFlatC = ""
+  indentation Assume{} = ""
+  indentation Empty = ""
+  indentation LblOp{} = "\t"
+  indentation other = "\t\t"
 
   operationToString' :: Operation -> String
-  operationToString' (MovOp arg1 arg2 size)       = "mov\t\t" ++ argToString arg1 ++ ", " ++ argToString arg2
   operationToString' (AddOp arg1 arg2)            = "add\t\t" ++ argToString arg1 ++ ", " ++ argToString arg2
   operationToString' (SubOp arg1 arg2)            = "sub\t\t" ++ argToString arg1 ++ ", " ++ argToString arg2
+  operationToString' (CallOp name)                = "call\t\t" ++ name
   operationToString' RetOp                        = "ret\t\t"
+  operationToString' (MovOp arg1 arg2 size)       = "mov\t\t" ++ argToString arg1 ++ ", " ++ argToString arg2
   operationToString' (IntOp arg1)                 = "int\t\t" ++ argToString arg1
   operationToString' (PopOp arg1)                 = "pop\t\t" ++ argToString arg1
   operationToString' (PushOp arg1 size)           = "push\t" ++ argToString arg1
-  operationToString' (CallOp name)                = "call\t\t" ++ name
   -- operationToString' (ArgOp i size)            = "ARG\t" ++ parNrToString i ++ ": " ++ sizeEnumToString size
   operationToString' (StartprocOp name)           = "PROC " ++ name
   operationToString' (EndprocOp name)             = "ENDP " ++ name
@@ -190,29 +222,59 @@ module TASM_86_Compile where
   operationToString' P386                         = "P386"
   operationToString' ModelFlatC                   = "MODEL FLAT, C"
   operationToString' Empty                        = ""
+  operationToString' (LblOp lbl1)                 = labelToString lbl1 ++ ":"
+  operationToString' (JmpOp label)                = "jmp\t\t" ++ labelToString label
+  operationToString' (JnzOp label)                = "jnz\t\t" ++ labelToString label
+  operationToString' (JzOp label)                 = "jz\t\t" ++ labelToString label
   operationToString' (End name)                   = "end " ++ name
   operationToString' (Assume assumptions)         = "ASSUME " ++ assumptionsToString assumptions
   operationToString' (StartSegment seg)           = segmentToString seg
-  operationToString' (LblOp lbl1)                 = labelToString lbl1 ++ ":"
   operationToString' (XorOp arg1 arg2)            = "xor\t\t" ++ argToString arg1 ++ ", " ++ argToString arg2
   operationToString' (CmpOp arg1 arg2)            = "cmp\t\t" ++ argToString arg1 ++ ", " ++ argToString arg2
   operationToString' (DivOp arg1)                 = "div\t\t" ++ argToString arg1
   operationToString' (TASM_86.IncOp arg1)         = "inc\t\t" ++ argToString arg1
   operationToString' (TASM_86.DecOp arg1)         = "dec\t\t" ++ argToString arg1
-  operationToString' (JnzOp lbl1)                 = "jnz\t\t" ++ labelToString lbl1
 
   operationsToString :: Operations -> String
   operationsToString ops = concat (intersperse "\n" $ map (\tac -> (indentation tac) ++ (operationToString' tac)) ops)
+
+  globalVarDefinitionToString :: GlobalVarDefinition -> String
+  globalVarDefinitionToString (GlobalVarDefinition name SizeDoubleWord Nothing) = "\t" ++ name ++ " dw ?"
+
+  globalVarDefinitionsToString :: GlobalVarDefinitions -> String
+  globalVarDefinitionsToString defs = concat (intersperse "\n" $ map globalVarDefinitionToString defs)
+
+  data CompiledFile = CompiledFile
+    { prefix :: Operations
+    , dataSegment :: GlobalVarDefinitions
+    , codeSegment :: Operations }
+
+  compiledFileToString :: CompiledFile -> String
+  compiledFileToString file =
+    let filePreludeString = operationsToString $ prefix file
+        fileExitludeString = "\n\n" ++ operationsToString fileExitlude
+        globalVarDefinitionsString = globalVarDefinitionsToString $ dataSegment file
+        nativeFunctionsString = operationsToString nativeFunctions
+        userFunctionsStrings = operationsToString $ codeSegment file
+        stackSegmentString =
+          "\n\nSTACK\n\n"
+        dataSegmentString =
+          "\n\nDATASEG\n\n" ++ globalVarDefinitionsString
+        codeSegmentString =
+          "\n\nCODESEG\n\n" ++ nativeFunctionsString ++ "\n\n" ++ userFunctionsStrings
+    in filePreludeString ++ stackSegmentString ++
+       dataSegmentString ++ codeSegmentString ++
+       fileExitludeString
+
 
   compile :: TACFile -> String
   compile (TACFile globals functions main) =
     let genericOps = concat $ map compileFunTAC functions
         mainOps = maybe [] compileFunTAC main
         ops = genericOps ++ mainOps
-        body = operationsToString ops
-        filePreludeString = operationsToString filePrelude
-        fileExitludeString = operationsToString fileExitlude
-    in filePreludeString ++ "\n\n" ++ body ++ "\n\n" ++ fileExitludeString
+        globalVarDefinitions = map compileGlobalVarTAC globals
+        file = CompiledFile filePrelude globalVarDefinitions ops
+    in compiledFileToString file
 
   -- compile :: TACFile -> String
   -- compile (TACFile globals functions) = show . compileFunTAC $ head function'"s

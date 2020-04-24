@@ -14,14 +14,18 @@ module TASM_86_Natives where
                 Assumption ES Flat,
                 Assumption FS Flat,
                 Assumption GS Flat
-              ],
-      StartSegment CodeSegment,
+              ]
+    ]
+
+  nativeFunctions :: Operations
+  nativeFunctions =
+    [
       StartprocOp "printInt",
 
       PushOp ebp SizeDoubleWord,
       MovOp ebp esp SizeDoubleWord,
       PushAd,
-      MovOp eax (Indirect 8 EBP) SizeDoubleWord,
+      MovOp eax (Memory $ Indirect 8 EBP) SizeDoubleWord,
       MovOp ecx (Literal 0) SizeDoubleWord,
       MovOp ebx (Literal 10) SizeDoubleWord,
 
@@ -91,11 +95,13 @@ module TASM_86_Natives where
 -- \\n\
 -- \"
 
+  -- dataSegment :: String -> String
+  -- dataSegment string = "DATASEG\n" ++ string ++ "\n"
+
   fileExitlude :: Operations
   fileExitlude =
     [
-      StartSegment DataSegment,
-      StartSegment StackSegment,
+      -- StartSegment DataSegment,
       End "main"
     ]
 

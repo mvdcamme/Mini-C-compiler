@@ -31,6 +31,8 @@ import TypeChecking
       TTimes                    { TTimes         }
       TWrite                    { TWrite         }
       TNot                      { TNot           }
+      TInc                      { TInc           }
+      TDec                      { TDec           }
       TIf                       { TIf            }
       TLpar                     { TLpar          }
       TLbrack                   { TLbrack        }
@@ -103,9 +105,11 @@ statement:                      lexp TAssign exp                                
                                 | TReturn exp                                             { $2 >>= \(exp) -> return $ Return1Stmt exp }
                                 | TRead lexp                                              { $2 >>= \(lexp) -> return $ ReadStmt lexp }
                                 | TWrite lexp                                             { $2 >>= \(lexp) -> return $ WriteStmt lexp }
-                                | TIf TLpar exp TRpar block TElse marker block marker     { do pred <- $3; blk1 <- $5; mrk1 <- $7; blk2 <- $8; mrk2 <- $9; return $ IfStmt pred blk1 mrk1 blk2 mrk2 }
+                                | TIf TLpar exp TRpar block TElse marker block marker     { do pred <- $3; blk1 <- $5; mrk1 <- $7; blk2 <- $8; mrk2 <- $9; return $ IfElseStmt pred blk1 mrk1 blk2 mrk2 }
+                                | TIf TLpar exp TRpar block marker                        { do pred <- $3; blk1 <- $5; mrk1 <- $6; return $ IfStmt pred blk1 mrk1}
                                 | block                                                   { $1 >>= \(blk) -> return $ BlockStmt blk }
                                 | exp                                                     { $1 >>= \(exp) -> return $ ExpStmt exp }
+                                | TWhile marker TLpar exp TRpar block marker              { do mrk1 <- $2; pred <- $4; block <- $6; mrk2 <- $7; return $ WhileStmt mrk1 pred block mrk2 }
 
 statements:                     statement statement_semicolon                             { do stmt <- $1; stmts <- $2; return $ stmt : stmts }
                                 |                                                         { return [] }
@@ -139,6 +143,10 @@ binopExp:                       exp TPlus exp                                   
                                 | exp TLessEqual exp                                      { do exp1 <- $1; exp2 <- $3; return $ BinaryExp LessEqualOp exp1 exp2 }
 
 unopExp:                        TNot exp                                                  { $2 >>= \(exp) -> return $ UnaryExp NotOp exp }
+                                | TInc lexp                                               { $2 >>= \(exp) -> return $ UnaryModifyingExp PrefixIncOp exp }
+                                | lexp TInc                                               { $1 >>= \(exp) -> return $ UnaryModifyingExp SuffixIncOp exp }
+                                | TDec lexp                                               { $2 >>= \(exp) -> return $ UnaryModifyingExp PrefixDecOp exp }
+                                | lexp TDec                                               { $1 >>= \(exp) -> return $ UnaryModifyingExp SuffixDecOp exp }
 
 pars:                           parTail                                                   { $1 >>= \(pars) -> return pars }
                                 | {- empty -}                                             { return [] }
@@ -167,6 +175,8 @@ data Token
      | TTimes
      | TWrite
      | TNot
+     | TInc
+     | TDec
      | TIf
      | TLpar
      | TLbrack
@@ -206,6 +216,8 @@ lexer (c:cs)
 lexer ('=':'=':cs)      =     TEqual : lexer cs
 lexer ('=':'!':'=':cs)  =     TNequal : lexer cs
 lexer ('=':cs)          =     TAssign : lexer cs
+lexer ('+':'+':cs)      =     TInc : lexer cs
+lexer ('-':'-':cs)      =     TDec : lexer cs
 lexer ('+':cs)          =     TPlus : lexer cs
 lexer ('-':cs)          =     TMinus : lexer cs
 lexer ('*':cs)          =     TTimes : lexer cs
