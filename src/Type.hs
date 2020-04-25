@@ -10,6 +10,7 @@ module Type where
   data Type =             Atom AtomicType
                           | ArrowType [Type] Type
                           | ArrayType Int Type
+                          | PointerType Type
                           deriving (Show, Eq)
 
   type TypeEnvironment =  GenericEnvironment Type

@@ -35,6 +35,7 @@ module AST where
 
     data LeftExpression =           VariableRefExp Name
                                     | ArrayRefExp Expression Expression
+                                    | DerefExp LeftExpression
                                     deriving (Show, Eq) 
 
     data Expression =               LeftExp LeftExpression
@@ -43,6 +44,7 @@ module AST where
                                     | UnaryModifyingExp UnModifyingOperator LeftExpression
                                     | FunctionAppExp Name Expressions
                                     | LengthExp Expression
+                                    | AddressOf LeftExpression
                                     | NumberExp Integer
                                     | QCharExp Char
                                     deriving (Show, Eq)

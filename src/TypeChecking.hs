@@ -103,6 +103,11 @@ module TypeChecking where
     typeCheckLExp :: TypeEnvironment -> LeftExpression -> TypeResult
     typeCheckLExp env (ArrayRefExp array index) = typeOfArrayRefExp env array index
     typeCheckLExp env (VariableRefExp var) = typeOfVariableRefExp env var
+    typeCheckLExp env (DerefExp lexp) =
+      do typ <- typeCheckLExp env lexp
+         case typ of
+            PointerType pointedTo -> return pointedTo
+            _ -> error $ printf "Expression %s is not a pointer type" (show env)
 
     typeCheckExp :: TypeEnvironment -> Expression -> TypeResult
     typeCheckExp env exp = case exp of
@@ -113,6 +118,7 @@ module TypeChecking where
         LengthExp exp -> typeOfLengthExp env exp
         UnaryExp unOp exp -> typeOfUnaryExp env exp unOp
         UnaryModifyingExp unOp lexp -> typeOfUnaryModifyingExp env lexp unOp
+        AddressOf lexp -> typeCheckLExp env lexp >>= \(typ) -> return $ PointerType typ
         LeftExp lexp -> typeCheckLExp env lexp
 
     typeCheckStatement :: TypeEnvironment -> Statement -> TypeChecked ()
@@ -130,6 +136,10 @@ module TypeChecking where
                                     else if (arrayExp /= tExp)
                                          then error $ printf "Assigning incorrect type %s to array-element of type %s" (show tExp) $ show arrayExp
                                          else return ()
+        DerefExp lexp -> do typ <- typeCheckLExp env lexp
+                            case typ of
+                              PointerType{} -> return ()
+                              _ -> error $ printf "Expression %s is not a pointer type" (show lexp)
     typeCheckStatement env (BlockStmt block) = typeCheckBlock env block >> return ()
     typeCheckStatement env (ExpStmt exp) = typeCheckExp env exp >> return ()
     typeCheckStatement env (IfElseStmt pred thenBody _ elseBody _) = do typeCheckExp env pred -- Type of the predicate can be everything: is not restricted to an integral type

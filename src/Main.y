@@ -30,6 +30,7 @@ import TypeChecking
       TSemicolon                { TSemicolon     }
       TTimes                    { TTimes         }
       TWrite                    { TWrite         }
+      TAmpersand                { TAmpersand     }
       TNot                      { TNot           }
       TInc                      { TInc           }
       TDec                      { TDec           }
@@ -66,7 +67,7 @@ import TypeChecking
 %left TGreater TGreaterEqual TLess TLessEqual
 %left TPlus TMinus
 %left TTimes TDivide
-%right TLength TNot
+%right TLength TNot TAmpersand
 
 %%
 
@@ -81,6 +82,7 @@ declaration:                    var_declaration                                 
 type:                           TInt                                                      { return $ Atom IntType }
                                 | TChar                                                   { return $ Atom CharType }
                                 | TVoid                                                   { return $ Atom VoidType }
+                                | type TTimes                                             { do typ <- $1; return $ PointerType typ }
 
 var_declaration:                type TName TSemicolon                                     { do typ <- $1; return $ VarDeclaration typ $2 }
 
@@ -119,6 +121,7 @@ statement_semicolon:            TSemicolon statements                           
 
 lexp:                           TName                                                     { return $ VariableRefExp $1 }
                                 | exp TLbrack exp TRbrack                                 { do exp1 <- $1; exp2 <- $3; return $ ArrayRefExp exp1 exp2 }
+                                | TTimes lexp                                             { do lexp <- $2; return $ DerefExp lexp }
 
 exp:                            lexp                                                      { $1 >>= \(lexp) -> return $ LeftExp lexp }
                                 | binopExp                                                { $1 >>= \(exp) -> return exp }
@@ -147,6 +150,7 @@ unopExp:                        TNot exp                                        
                                 | lexp TInc                                               { $1 >>= \(exp) -> return $ UnaryModifyingExp SuffixIncOp exp }
                                 | TDec lexp                                               { $2 >>= \(exp) -> return $ UnaryModifyingExp PrefixDecOp exp }
                                 | lexp TDec                                               { $1 >>= \(exp) -> return $ UnaryModifyingExp SuffixDecOp exp }
+                                | TAmpersand lexp                                         { do lexp <- $2; return $ AddressOf lexp }
 
 pars:                           parTail                                                   { $1 >>= \(pars) -> return pars }
                                 | {- empty -}                                             { return [] }
@@ -173,6 +177,7 @@ data Token
      | TRbrace
      | TSemicolon
      | TTimes
+     | TAmpersand
      | TWrite
      | TNot
      | TInc
@@ -222,6 +227,7 @@ lexer ('+':cs)          =     TPlus : lexer cs
 lexer ('-':cs)          =     TMinus : lexer cs
 lexer ('*':cs)          =     TTimes : lexer cs
 lexer ('/':cs)          =     TDivide : lexer cs
+lexer ('&':cs)          =     TAmpersand : lexer cs
 lexer (';':cs)          =     TSemicolon : lexer cs
 lexer ('!' : 'x' :cs)   =     TNot : lexer cs
 lexer ('(':cs)          =     TLpar : lexer cs

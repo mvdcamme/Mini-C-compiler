@@ -47,6 +47,7 @@ module TASM_86 where
                               | LiteralWithString String
                               | Register Register
                               | Memory MemoryReference
+                              | DerefRegister Register
                               deriving (Show, Eq)
 
   data SizeEnum             = SizeByte
@@ -80,6 +81,10 @@ module TASM_86 where
                               | StartprocOp FunctionName
                               | LblOp Label
                               | JmpOp Label
+                              | JgOp Label
+                              | JgeOp Label
+                              | JlOp Label
+                              | JleOp Label
                               | JzOp Label
                               | JnzOp Label
                               | AddOp Arg Arg
@@ -89,6 +94,7 @@ module TASM_86 where
                               | DivOp Arg
                               | IncOp Arg
                               | DecOp Arg
+                              | LeaOp Arg Arg
                               | RetOp
                               | IntOp Arg -- Interrupt
                               | StiOp -- set The Interrupt Flag => enable interrupts
@@ -138,6 +144,24 @@ module TASM_86 where
   edx = Register EDX
   dx :: Arg
   dx = Register DX
+
+  regToSize :: Register -> SizeEnum
+  regToSize EAX = SizeDoubleWord
+  regToSize EBX = SizeDoubleWord
+  regToSize ECX = SizeDoubleWord
+  regToSize EDX = SizeDoubleWord
+  regToSize AX  = SizeWord
+  regToSize BX  = SizeWord
+  regToSize CX  = SizeWord
+  regToSize DX  = SizeWord
+  regToSize AH  = SizeByte
+  regToSize AL  = SizeByte
+  regToSize BH  = SizeByte
+  regToSize BL  = SizeByte
+  regToSize CH  = SizeByte
+  regToSize CL  = SizeByte
+  regToSize DH  = SizeByte
+  regToSize DL  = SizeByte
 
   retReg :: Arg -- The register where a function's return value will be placed in
   retReg = eax
