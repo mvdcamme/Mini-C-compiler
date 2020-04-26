@@ -45,6 +45,14 @@ module TASM_86_Natives where
       DecOp ecx,
       JnzOp $ LabelString "printOneDigit",
 
+      -- Print new line: https://stackoverflow.com/questions/15832893/printing-a-new-line-in-assembly-language-with-ms-dos-int-21h-system-calls
+      MovOp dl (Literal 13) SizeDoubleWord,
+      MovOp ah (LiteralWithString "02h") SizeDoubleWord, 
+      IntOp $ LiteralWithString "21h",
+      MovOp dl (Literal 10) SizeDoubleWord,
+      MovOp ah (LiteralWithString "02h") SizeDoubleWord, 
+      IntOp $ LiteralWithString "21h",
+
       PopAd,
       MovOp esp ebp SizeDoubleWord,
       PopOp ebp,

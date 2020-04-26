@@ -138,14 +138,26 @@ module TASM_86 where
   ebx = Register EBX
   bx :: Arg
   bx = Register BX
+  bh :: Arg
+  bh = Register BH
+  bl :: Arg
+  bl = Register BL
   ecx :: Arg
   ecx = Register ECX
   cx :: Arg
   cx = Register CX
+  ch :: Arg
+  ch = Register CH
+  cl :: Arg
+  cl = Register CL
   edx :: Arg
   edx = Register EDX
   dx :: Arg
   dx = Register DX
+  dh :: Arg
+  dh = Register DH
+  dl :: Arg
+  dl = Register DL
 
   regToSize :: Register -> SizeEnum
   regToSize EAX = SizeDoubleWord
