@@ -64,7 +64,7 @@ module TASM_86 where
                               deriving (Show, Eq)
 
   data Label                = LabelString String
-                              | LabelId Integer
+                              | LabelId String Integer
                               deriving (Show, Eq)
 
   data Style                = Flat

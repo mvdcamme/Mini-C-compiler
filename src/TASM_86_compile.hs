@@ -10,6 +10,9 @@ module TASM_86_Compile where
   import TASM_86_Definitions
   import ThreeAddressCode as TAC
 
+  conditionalLabelName :: String
+  conditionalLabelName = "label"
+
   dwordSize :: Integer
   dwordSize = 4
 
@@ -66,17 +69,18 @@ module TASM_86_Compile where
   makeConditionalJump :: Input -> Marker -> (Label -> Operation) -> Operations
   makeConditionalJump in1 (Marker loc) create =
     let arg1 = inputToArg in1
-    in [CmpOp arg1 $ TASM_86.Literal 0, create $ LabelId loc]
+    in [CmpOp arg1 $ TASM_86.Literal 0, create $ LabelId conditionalLabelName loc]
 
   makeComparisonExp :: Input -> Input -> Output -> (Label -> Operation) -> TASM_86_Compiled ()
   makeComparisonExp in1 in2 out makeJmp = 
     let arg1 = inputToArg in1
         arg2 = inputToArg in2
         out' = outputToArg out
+        labelName = "cmp"
     in do id1 <- newLabel
-          let label1 = LabelString ("cmp_" ++ show id1)
+          let label1 = LabelId labelName id1
           id2 <- newLabel
-          let label2 = LabelString ("cmp_" ++ show id2)
+          let label2 = LabelId labelName id2
           -- Compare in1 with in2
           fromOps $ makeIndirectOp arg1 arg2 SizeDoubleWord (\a b _ -> CmpOp a b)
           -- Do the conditional jump
@@ -122,8 +126,8 @@ module TASM_86_Compile where
   compileTAC (LssCode in1 in2 out) = makeComparisonExp in1 in2 out JlOp
   compileTAC (LeqCode in1 in2 out) = makeComparisonExp in1 in2 out JleOp
   -- Labels and jumps
-  compileTAC (LblCode (Marker loc)) = (fromOps . LblOp $ LabelId loc)
-  compileTAC (JmpCode (Marker loc)) = (fromOps . JmpOp $ LabelId loc)
+  compileTAC (LblCode (Marker loc)) = (fromOps . LblOp $ LabelId conditionalLabelName loc)
+  compileTAC (JmpCode (Marker loc)) = (fromOps . JmpOp $ LabelId conditionalLabelName loc)
   compileTAC (JnzCode in1 marker) = (fromOps $ makeConditionalJump in1 marker JnzOp)
   compileTAC (JzCode in1 marker) = (fromOps $ makeConditionalJump in1 marker JzOp  )
   -- -- Function calls and returns
@@ -262,7 +266,7 @@ module TASM_86_Compile where
 
   labelToString :: Label -> String
   labelToString (LabelString string) = string
-  labelToString (LabelId i) = "label_" ++ show i
+  labelToString (LabelId name i) = name ++ "_" ++ show i
 
   modelSizeToString :: ModelSizeEnum -> String
   modelSizeToString ModelSizeSmall = "small"
