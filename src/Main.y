@@ -229,17 +229,18 @@ lexer ('*':cs)          =     TTimes : lexer cs
 lexer ('/':cs)          =     TDivide : lexer cs
 lexer ('&':cs)          =     TAmpersand : lexer cs
 lexer (';':cs)          =     TSemicolon : lexer cs
-lexer ('!' : 'x' :cs)   =     TNot : lexer cs
+lexer ('!':'=':cs)      =     TNequal : lexer cs
+lexer ('!':'x':cs)      =     TNot : lexer cs
 lexer ('(':cs)          =     TLpar : lexer cs
 lexer (')':cs)          =     TRpar : lexer cs
 lexer ('{':cs)          =     TLbrace : lexer cs
 lexer ('}':cs)          =     TRbrace : lexer cs
 lexer ('[':cs)          =     TLbrack : lexer cs
 lexer (']':cs)          =     TRbrack : lexer cs
-lexer ('>':cs)          =     TGreater : lexer cs
 lexer ('>':'=':cs)      =     TGreaterEqual : lexer cs
-lexer ('<':cs)          =     TLess : lexer cs
+lexer ('>':cs)          =     TGreater : lexer cs
 lexer ('<':'=':cs)      =     TLessEqual : lexer cs
+lexer ('<':cs)          =     TLess : lexer cs
 lexer ('\n':'\n':cs)    =     TEnd : lexer cs
 lexer ('\t':cs)         =     TTab : lexer cs
 lexer (',':cs)          =     TComma : lexer cs

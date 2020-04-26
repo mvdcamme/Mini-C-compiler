@@ -81,6 +81,8 @@ module TASM_86 where
                               | StartprocOp FunctionName
                               | LblOp Label
                               | JmpOp Label
+                              | JeOp Label
+                              | JneOp Label
                               | JgOp Label
                               | JgeOp Label
                               | JlOp Label
