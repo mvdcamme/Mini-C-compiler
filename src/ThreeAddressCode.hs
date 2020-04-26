@@ -269,9 +269,33 @@ module ThreeAddressCode where
         allTacs = lbl1 : condTacs ++ allBodyTacs `snoc` lbl2
     in CompiledStm allTacs env locs2
 
+  forStmtToTacs :: LocEnv -> Locations -> Statement -> CompiledStm
+  forStmtToTacs env locs (ForStmt initStmt m1 pred m2 incStmt m3 body m4) =
+    let lbl1 = LblCode m1
+        lbl2 = LblCode m2
+        lbl3 = LblCode m3
+        lbl4 = LblCode m4
+        CompiledStm initTacs env1 locs1 = stmtToTacs env locs initStmt
+        CompiledExp predTacs env2 locs2 predOutAddr = expToTACs env locs pred
+        CompiledStm incTacs env3 locs3 = stmtToTacs env2 locs2 incStmt
+        -- Can ignore the env used in the body
+        CompiledStm bodyTacs _ locs4 = bodyToTACs env3 locs3 body
+        -- Init -> Should jump to predicate, but predicate tacs are already placed after the init anuway
+        -- Predicate false -> Jump to end of statement
+        predFalseJmpTac = JzCode (InAddr predOutAddr) m4
+        -- Predicate true -> Jump to body
+        predTrueJmpTac = JmpCode m3
+        predJmp = [predFalseJmpTac, predTrueJmpTac]
+        -- End of body -> Jump to increment tacs
+        bodyJmpTac = JmpCode m2
+        -- Increment -> Jump to predicate
+        incJmpTac = JmpCode m1
+        allTacs = initTacs `snoc` lbl1 ++ predTacs ++ predJmp
+                  `snoc` lbl2 ++ incTacs `snoc` incJmpTac
+                  `snoc` lbl3 ++ bodyTacs `snoc` bodyJmpTac `snoc` lbl4
+    in CompiledStm allTacs env3 locs4
+
   stmtToTacs :: LocEnv -> Locations -> Statement -> CompiledStm
-  stmtToTacs env locs (ExpStmt exp) = let (CompiledExp tacs env' locs' _) = expToTACs env locs exp
-                                      in CompiledStm tacs env' locs'
   stmtToTacs env locs (AssignStmt (VariableRefExp name) exp) =
     let (CompiledExp tacs env' locs' outputAddr) = expToTACs env locs exp
         toWrite = lookupInput name env
@@ -284,13 +308,18 @@ module ThreeAddressCode where
         asnTac = AsnCode (InAddr inAddr) . OutAddr $ TACLocationPointsTo writeAddr
         allTacs = lexpTacs ++ expTacs `snoc` asnTac
     in CompiledStm allTacs env2 locs2
+  stmtToTacs env locs (ExpStmt exp) =
+    let (CompiledExp tacs env' locs' _) = expToTACs env locs exp
+    in CompiledStm tacs env' locs'
+  stmtToTacs env locs forStmt@ForStmt{} = forStmtToTacs env locs forStmt
   stmtToTacs env locs ifElseStmt@IfElseStmt{} = ifElseStmtToTacs env locs ifElseStmt
   stmtToTacs env locs ifStmt@IfStmt{} = ifStmtToTacs env locs ifStmt
   stmtToTacs env locs whileStmt@WhileStmt{} = whileStmtToTacs env locs whileStmt
   stmtToTacs env locs Return0Stmt = CompiledStm [Rt0Code] env locs
-  stmtToTacs env locs (Return1Stmt exp) = let (CompiledExp expTacs env' locs' outputAddr) = expToTACs env locs exp
-                                              retTac = Rt1Code $ InAddr outputAddr
-                                          in CompiledStm (expTacs `snoc` retTac) env' locs'
+  stmtToTacs env locs (Return1Stmt exp) =
+    let (CompiledExp expTacs env' locs' outputAddr) = expToTACs env locs exp
+        retTac = Rt1Code $ InAddr outputAddr
+    in CompiledStm (expTacs `snoc` retTac) env' locs'
   -- stmtToTacs env locs _ = CompiledStm [] env locs
 
   addDeclarations :: LocEnv -> Locations -> (Locations -> (TACLocation, Locations)) -> (Address -> TACLocation) -> Declarations -> (LocEnv, Locations)

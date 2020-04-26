@@ -42,6 +42,7 @@ import TypeChecking
       TRead                     { TRead          }
       TLength                   { TLength        }
       TElse                     { TElse          }
+      TFor                      { TFor           }
       TRpar                     { TRpar          }
       TRbrack                   { TRbrack        }
       TPlus                     { TPlus          }
@@ -112,6 +113,7 @@ statement:                      lexp TAssign exp                                
                                 | block                                                   { $1 >>= \(blk) -> return $ BlockStmt blk }
                                 | exp                                                     { $1 >>= \(exp) -> return $ ExpStmt exp }
                                 | TWhile marker TLpar exp TRpar block marker              { do mrk1 <- $2; pred <- $4; block <- $6; mrk2 <- $7; return $ WhileStmt mrk1 pred block mrk2 }
+                                | TFor TLpar statement TSemicolon marker exp TSemicolon statement marker TRpar marker block marker                       { do mrk1 <- $5; mrk2 <- $9; mrk3 <- $11; mrk4 <- $13; initStmt <- $3; pred <- $6; incStmt <- $8; body <- $12; return $ ForStmt initStmt mrk1 pred mrk2 incStmt mrk3 body mrk4 }
 
 statements:                     statement statement_semicolon                             { do stmt <- $1; stmts <- $2; return $ stmt : stmts }
                                 |                                                         { return [] }
@@ -179,6 +181,7 @@ data Token
      | TTimes
      | TAmpersand
      | TWrite
+     | TFor
      | TNot
      | TInc
      | TDec
@@ -261,6 +264,7 @@ lexName cs =
       ("void", rest )   ->    TVoid : lexer rest
       ("while",rest)    ->    TWhile : lexer rest
       ("write",rest)    ->    TWrite : lexer rest
+      ("for",rest)      ->    TFor : lexer rest
       (var,rest)        ->    TName var : lexer rest
 
 main = do args <- getArgs
@@ -271,7 +275,8 @@ main = do args <- getArgs
                   in do print "##### DECLARATIONS #####"
                         putStrLn $ concat (intersperse "\n" $ map show decls)
                         print "##### TYPES #####"
-                        print $ TypeChecking.typeCheckDeclarations decls
+                        let typeChecked = TypeChecking.typeCheckDeclarations decls
+                        either (\_ -> exitWith $ ExitFailure 1) (\types -> print $ types) typeChecked
                         print "##### TACS #####"
                         let tacFile = generateTACs decls
                         print tacFile
@@ -280,4 +285,5 @@ main = do args <- getArgs
                         let compiled = compile tacFile
                         putStrLn compiled
                         writeFile "output/output.asm" compiled
+                        exitWith ExitSuccess
   }

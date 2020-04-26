@@ -18,7 +18,8 @@ module AST where
 
     data Statement =                AssignStmt LeftExpression Expression
                                     | BlockStmt Body
-                                    | ExpStmt Expression 
+                                    | ExpStmt Expression
+                                    | ForStmt Statement Marker Expression Marker Statement Marker Body Marker
                                     | IfElseStmt Expression Body Marker Body Marker
                                     | IfStmt Expression Body Marker
                                     | Return1Stmt Expression                        -- Returns a value

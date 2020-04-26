@@ -142,6 +142,16 @@ module TypeChecking where
                               _ -> error $ printf "Expression %s is not a pointer type" (show lexp)
     typeCheckStatement env (BlockStmt block) = typeCheckBlock env block >> return ()
     typeCheckStatement env (ExpStmt exp) = typeCheckExp env exp >> return ()
+    typeCheckStatement env (ForStmt init _ pred _ inc _ body _) =
+      do typeCheckStatement env init
+         predType <- typeCheckExp env pred
+         isIntegral <- isIntegralType predType
+         if isIntegral
+         then return ()
+         else error $ printf "Expression %s is not an integral type" (show pred)
+         typeCheckStatement env inc
+         typeCheckBlock env body
+         return ()
     typeCheckStatement env (IfElseStmt pred thenBody _ elseBody _) = do typeCheckExp env pred -- Type of the predicate can be everything: is not restricted to an integral type
                                                                         typeCheckBlock env thenBody
                                                                         typeCheckBlock env elseBody
