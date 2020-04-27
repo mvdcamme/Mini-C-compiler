@@ -104,7 +104,7 @@ formal_par:                     type TName                                      
 block:                          TLbrace var_declarations statements TRbrace               { do decls <- $2; stmts <- $3; return $ Body decls stmts () }
 
 statement:                      lexp TAssign exp                                          { do lexp <- $1; exp <- $3; return $ AssignStmt lexp exp () }
-                                | TReturn                                                 { return Return0Stmt () }
+                                | TReturn                                                 { return $ Return0Stmt () }
                                 | TReturn exp                                             { $2 >>= \(exp) -> return $ Return1Stmt exp () }
                                 | TRead lexp                                              { $2 >>= \(lexp) -> return $ ReadStmt lexp () }
                                 | TWrite lexp                                             { $2 >>= \(lexp) -> return $ WriteStmt lexp () }
@@ -267,6 +267,10 @@ lexName cs =
       ("for",rest)      ->    TFor : lexer rest
       (var,rest)        ->    TName var : lexer rest
 
+fromRight :: b -> Either a b -> b
+fromRight _ (Right b) = b
+fromRight b _ = b
+
 main = do args <- getArgs
           if (length args) /= 1
              then putStrLn "Exactly one argument, filename, expected"
@@ -277,10 +281,11 @@ main = do args <- getArgs
                         print "##### TYPES #####"
                         let typeChecked = TypeChecking.typeCheckDeclarations decls
                         either (\_ -> exitWith $ ExitFailure 1) (\types -> print $ types) typeChecked
+                        let tDecls = fromRight [] $ fmap snd typeChecked
                         print "##### TACS #####"
-                        let tacFile = generateTACs decls
+                        let tacFile = generateTACs tDecls
                         print tacFile
-                        -- putStrLn $ concat (intersperse "\n" . map show $ generateTACs decls)
+                        -- putStrLn $ concat (intersperse "\n" . map show $ generateTACs tDecls)
                         print "##### Assembly #####"
                         let compiled = compile tacFile
                         putStrLn compiled
