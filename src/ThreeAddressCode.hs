@@ -144,7 +144,7 @@ module ThreeAddressCode where
   newBodyEnv env locs = (Environment.push env, locs)
 
 
-  binaryExpToTACs :: LocEnv -> Locations -> Expression -> Expression -> BinOperator -> CompiledExp
+  binaryExpToTACs :: LocEnv -> Locations -> (Expression t) -> (Expression t) -> BinOperator -> CompiledExp
   binaryExpToTACs env locs left right op = let CompiledExp leftTACs env1 locs1 leftAddr = expToTACs env locs left
                                                CompiledExp rightTACs env2 locs2 rightAddr = expToTACs env1 locs1 right
                                                (binAddr, locs3) = incExps locs2
@@ -162,7 +162,7 @@ module ThreeAddressCode where
                                                tac = makeTAC (InAddr leftAddr) (InAddr rightAddr) $ OutAddr binAddr
                                            in CompiledExp (leftTACs ++ rightTACs ++ [tac]) env locs3 binAddr
 
-  unaryExpToTACs :: LocEnv -> Locations -> Expression -> UnOperator -> CompiledExp
+  unaryExpToTACs :: LocEnv -> Locations -> (Expression t) -> UnOperator -> CompiledExp
   unaryExpToTACs env locs exp op =
     let CompiledExp leftTACs env1 locs1 argAddr = expToTACs env locs exp
         (outputAddr, locs2) = incExps locs1
@@ -172,9 +172,9 @@ module ThreeAddressCode where
         tac = makeTAC (InAddr argAddr) $ OutAddr outputAddr
     in CompiledExp (leftTACs ++ [tac]) env1 locs2 outputAddr
 
-  unaryModifyingExpToTACs :: LocEnv -> Locations -> LeftExpression -> UnModifyingOperator -> CompiledExp
+  unaryModifyingExpToTACs :: LocEnv -> Locations -> (LeftExpression t) -> UnModifyingOperator -> CompiledExp
   unaryModifyingExpToTACs env locs lexp op =
-    let CompiledExp leftTACs env1 locs1 argAddr = expToTACs env locs (LeftExp lexp)
+    let CompiledExp leftTACs env1 locs1 argAddr = expToTACs env locs (LeftExp lexp $ getLExpT lexp)
         (outputAddr, locs2) = incExps locs1
         makeTAC = case op of
                     PrefixIncOp -> PrefixIncCode
@@ -184,7 +184,7 @@ module ThreeAddressCode where
         tac = makeTAC (InAddr argAddr) $ OutAddr outputAddr
     in CompiledExp (leftTACs ++ [tac]) env1 locs2 outputAddr
 
-  compileArgs :: LocEnv -> Locations -> Expressions -> CompiledStm
+  compileArgs :: LocEnv -> Locations -> (Expressions t) -> CompiledStm
   compileArgs env locs exps = let (env1, locs1, tacs1, inputAddresses) = foldl (\(env, locs, tacs, argInputAddresses) exp -> 
                                                                          let CompiledExp tacs1 env1 locs1 argInputAddr = expToTACs env locs exp
                                                                          in (env1, locs1, (tacs1 ++ tacs), (InAddr argInputAddr : argInputAddresses))) (env, locs, [], []) exps
@@ -204,40 +204,40 @@ module ThreeAddressCode where
                                      tac = MovCode input output
                                  in CompiledExp [tac] env locs1 outputAddr
 
-  expToTACs :: LocEnv -> Locations -> Expression -> CompiledExp
-  expToTACs env locs atomic@(NumberExp integer) = atomicToTACs env locs $ IntValue integer
-  expToTACs env locs atomic@(QCharExp char) = atomicToTACs env locs $ CharValue char
-  expToTACs env locs (AddressOf lexp) =
-    let (CompiledExp lexpTacs env1 locs1 inAddr) = expToTACs env locs $ LeftExp lexp
+  expToTACs :: LocEnv -> Locations -> (Expression t) -> CompiledExp
+  expToTACs env locs atomic@(NumberExp integer _) = atomicToTACs env locs $ IntValue integer
+  expToTACs env locs atomic@(QCharExp char _) = atomicToTACs env locs $ CharValue char
+  expToTACs env locs (AddressOf lexp _) =
+    let (CompiledExp lexpTacs env1 locs1 inAddr) = expToTACs env locs . LeftExp lexp $ getLExpT lexp
         inAddr' = TACLocationPointsTo inAddr
         (outAddr, locs2) = incExps locs1
         tac = AdrCode (InAddr inAddr') (OutAddr outAddr)
         allTacs = lexpTacs `snoc` tac
     in CompiledExp allTacs env1 locs2 outAddr
-  expToTACs env locs (BinaryExp op left right) = binaryExpToTACs env locs left right op
-  expToTACs env locs (LeftExp (VariableRefExp name)) =
+  expToTACs env locs (BinaryExp op left right _) = binaryExpToTACs env locs left right op
+  expToTACs env locs (LeftExp (VariableRefExp name _) _) =
     let address = lookupInput name env
     in CompiledExp [] env locs address
-  expToTACs env locs (LeftExp (DerefExp lexp)) =
-    let CompiledExp lexpTacs env1 locs1 inAddr = expToTACs env locs $ LeftExp lexp
+  expToTACs env locs (LeftExp (DerefExp lexp _) _) =
+    let CompiledExp lexpTacs env1 locs1 inAddr = expToTACs env locs . LeftExp lexp $ getLExpT lexp
         (outAddr, locs2) = incExps locs1
         tac = DrfCode (InAddr inAddr) $ OutAddr outAddr
         allTacs = lexpTacs `snoc` tac
     in CompiledExp allTacs env1 locs2 outAddr
-  expToTACs env locs (UnaryExp op exp) = unaryExpToTACs env locs exp op
-  expToTACs env locs (UnaryModifyingExp op lexp) = unaryModifyingExpToTACs env locs lexp op
-  expToTACs env locs (FunctionAppExp name args) = let CompiledStm evalArgsTACs env1 locs1 = compileArgs env locs args 
-                                                      -- fnInput = InAddr $ lookupInput name env -- Should use the function's name instead of the address
-                                                      (retAddress, locs2) = incExps locs1
-                                                      nrOfPars = toInteger $ length args
-                                                      callCode = if name == printFunName
-                                                                 then PrtCode nrOfPars
-                                                                 else CllCode name nrOfPars $ OutAddr retAddress
-                                                      allTacs = evalArgsTACs `snoc` callCode
-                                                  in CompiledExp allTacs env1 locs2 retAddress
+  expToTACs env locs (UnaryExp op exp _) = unaryExpToTACs env locs exp op
+  expToTACs env locs (UnaryModifyingExp op lexp _) = unaryModifyingExpToTACs env locs lexp op
+  expToTACs env locs (FunctionAppExp name args _) = let CompiledStm evalArgsTACs env1 locs1 = compileArgs env locs args 
+                                                        -- fnInput = InAddr $ lookupInput name env -- Should use the function's name instead of the address
+                                                        (retAddress, locs2) = incExps locs1
+                                                        nrOfPars = toInteger $ length args
+                                                        callCode = if name == printFunName
+                                                                   then PrtCode nrOfPars
+                                                                   else CllCode name nrOfPars $ OutAddr retAddress
+                                                        allTacs = evalArgsTACs `snoc` callCode
+                                                    in CompiledExp allTacs env1 locs2 retAddress
 
-  ifElseStmtToTacs :: LocEnv -> Locations -> Statement -> CompiledStm
-  ifElseStmtToTacs env locs (IfElseStmt condExp thenBody m1 elseBody m2) =
+  ifElseStmtToTacs :: LocEnv -> Locations -> (Statement t) -> CompiledStm
+  ifElseStmtToTacs env locs (IfElseStmt condExp thenBody m1 elseBody m2 _) =
     let lbl1 = LblCode m1
         lbl2 = LblCode m2
         (CompiledExp condExpTacs env1 locs1 condExpOutputAddr) = expToTACs env locs condExp
@@ -248,8 +248,8 @@ module ThreeAddressCode where
         allTacs = condTacs ++ thenTacs ++ elseBodyTacs `snoc` lbl2
     in CompiledStm allTacs env locs3
 
-  ifStmtToTacs :: LocEnv -> Locations -> Statement -> CompiledStm
-  ifStmtToTacs env locs (IfStmt condExp thenBody m1) = 
+  ifStmtToTacs :: LocEnv -> Locations -> (Statement t) -> CompiledStm
+  ifStmtToTacs env locs (IfStmt condExp thenBody m1 _) = 
     let lbl1 = LblCode m1
         (CompiledExp condExpTacs env1 locs1 condExpOutputAddr) = expToTACs env locs condExp
         condTacs = condExpTacs `snoc` JzCode (InAddr condExpOutputAddr) m1
@@ -258,8 +258,8 @@ module ThreeAddressCode where
         allTacs = condTacs ++ thenTacs
     in CompiledStm allTacs env locs2
 
-  whileStmtToTacs :: LocEnv -> Locations -> Statement -> CompiledStm
-  whileStmtToTacs env locs (WhileStmt m1 condExp body m2) =
+  whileStmtToTacs :: LocEnv -> Locations -> (Statement t) -> CompiledStm
+  whileStmtToTacs env locs (WhileStmt m1 condExp body m2 _) =
     let lbl1 = LblCode m1
         lbl2 = LblCode m2
         (CompiledExp condExpTacs env1 locs1 condExpOutputAddr) = expToTACs env locs condExp
@@ -269,8 +269,8 @@ module ThreeAddressCode where
         allTacs = lbl1 : condTacs ++ allBodyTacs `snoc` lbl2
     in CompiledStm allTacs env locs2
 
-  forStmtToTacs :: LocEnv -> Locations -> Statement -> CompiledStm
-  forStmtToTacs env locs (ForStmt initStmt m1 pred m2 incStmt m3 body m4) =
+  forStmtToTacs :: LocEnv -> Locations -> (Statement t) -> CompiledStm
+  forStmtToTacs env locs (ForStmt initStmt m1 pred m2 incStmt m3 body m4 _) =
     let lbl1 = LblCode m1
         lbl2 = LblCode m2
         lbl3 = LblCode m3
@@ -295,48 +295,48 @@ module ThreeAddressCode where
                   `snoc` lbl3 ++ bodyTacs `snoc` bodyJmpTac `snoc` lbl4
     in CompiledStm allTacs env3 locs4
 
-  stmtToTacs :: LocEnv -> Locations -> Statement -> CompiledStm
-  stmtToTacs env locs (AssignStmt (VariableRefExp name) exp) =
+  stmtToTacs :: LocEnv -> Locations -> (Statement t) -> CompiledStm
+  stmtToTacs env locs (AssignStmt (VariableRefExp name _) exp _) =
     let (CompiledExp tacs env' locs' outputAddr) = expToTACs env locs exp
         toWrite = lookupInput name env
         input = InAddr outputAddr
         tac = AsnCode input $ OutAddr toWrite
     in CompiledStm (tacs `snoc` tac) env' locs'
-  stmtToTacs env locs (AssignStmt (DerefExp lexp) exp) =
-    let (CompiledExp lexpTacs env1 locs1 writeAddr) = expToTACs env locs $ LeftExp lexp
+  stmtToTacs env locs (AssignStmt (DerefExp lexp _) exp _) =
+    let (CompiledExp lexpTacs env1 locs1 writeAddr) = expToTACs env locs . LeftExp lexp $ getLExpT lexp
         (CompiledExp expTacs env2 locs2 inAddr) = expToTACs env1 locs1 exp
         asnTac = AsnCode (InAddr inAddr) . OutAddr $ TACLocationPointsTo writeAddr
         allTacs = lexpTacs ++ expTacs `snoc` asnTac
     in CompiledStm allTacs env2 locs2
-  stmtToTacs env locs (ExpStmt exp) =
+  stmtToTacs env locs (ExpStmt exp _) =
     let (CompiledExp tacs env' locs' _) = expToTACs env locs exp
     in CompiledStm tacs env' locs'
   stmtToTacs env locs forStmt@ForStmt{} = forStmtToTacs env locs forStmt
   stmtToTacs env locs ifElseStmt@IfElseStmt{} = ifElseStmtToTacs env locs ifElseStmt
   stmtToTacs env locs ifStmt@IfStmt{} = ifStmtToTacs env locs ifStmt
   stmtToTacs env locs whileStmt@WhileStmt{} = whileStmtToTacs env locs whileStmt
-  stmtToTacs env locs Return0Stmt = CompiledStm [Rt0Code] env locs
-  stmtToTacs env locs (Return1Stmt exp) =
+  stmtToTacs env locs Return0Stmt{} = CompiledStm [Rt0Code] env locs
+  stmtToTacs env locs (Return1Stmt exp _) =
     let (CompiledExp expTacs env' locs' outputAddr) = expToTACs env locs exp
         retTac = Rt1Code $ InAddr outputAddr
     in CompiledStm (expTacs `snoc` retTac) env' locs'
   -- stmtToTacs env locs _ = CompiledStm [] env locs
 
-  addDeclarations :: LocEnv -> Locations -> (Locations -> (TACLocation, Locations)) -> (Address -> TACLocation) -> Declarations -> (LocEnv, Locations)
+  addDeclarations :: LocEnv -> Locations -> (Locations -> (TACLocation, Locations)) -> (Address -> TACLocation) -> (Declarations t) -> (LocEnv, Locations)
   addDeclarations env locs inc toLoc decls =
     foldl (\(env, locs) name ->
             let (address, locs1) = inc locs
                 env1 = Environment.insert name address env
             in (env1, locs1))
-          (env, locs) $ map (\(VarDeclaration _ name) -> name) decls
+          (env, locs) $ map (\(VarDeclaration _ name _) -> name) decls
 
-  globalVarDefToTACs :: LocEnv -> Locations -> Declaration -> CompiledStm
-  globalVarDefToTACs env locs (VarDeclaration _ name) = let (address, updatedLocs) = incGlobals locs
-                                                            updatedEnv = Environment.insert name address env
-                                                        in CompiledStm [] updatedEnv updatedLocs -- No TACs needed
+  globalVarDefToTACs :: LocEnv -> Locations -> (Declaration t) -> CompiledStm
+  globalVarDefToTACs env locs (VarDeclaration _ name _) = let (address, updatedLocs) = incGlobals locs
+                                                              updatedEnv = Environment.insert name address env
+                                                          in CompiledStm [] updatedEnv updatedLocs -- No TACs needed
 
-  bodyToTACs :: LocEnv -> Locations -> Body -> CompiledStm
-  bodyToTACs env locs (Body bodyDecls bodyStmts) =
+  bodyToTACs :: LocEnv -> Locations -> (Body t) -> CompiledStm
+  bodyToTACs env locs (Body bodyDecls bodyStmts _) =
     let (bodyPushedEnv, locs') = newBodyEnv env locs
         (bodyEnv, bodyLocs) = addDeclarations bodyPushedEnv locs' incLocals Local bodyDecls
         (bodyEnv', bodyLocs', bodyTacs) = foldl (\(env, locs, tacs) stm -> 
@@ -345,14 +345,14 @@ module ThreeAddressCode where
           in (env1, locs1, tacs ++ tacs1)) (bodyEnv, bodyLocs, []) bodyStmts
     in CompiledStm bodyTacs bodyEnv' bodyLocs'
 
-  declarationToTACs :: LocEnv -> Locations -> Declaration -> CompiledStm
-  declarationToTACs env locs decl@(VarDeclaration _ _) = globalVarDefToTACs env locs decl
-  declarationToTACs env locs (FunDeclaration _ name pars body) = 
+  declarationToTACs :: LocEnv -> Locations -> (Declaration t) -> CompiledStm
+  declarationToTACs env locs decl@VarDeclaration{} = globalVarDefToTACs env locs decl
+  declarationToTACs env locs (FunDeclaration _ name pars body _) = 
     let (address, updatedLocs) = incGlobals locs -- Add function as a Global loc
         updatedLocs' = newFunBodyEnv updatedLocs
         addedEnv = Environment.insert name address env
         parsPushedEnv = Environment.push env
-        (parsEnv, parsLocs) = foldl (\(env, locs) (VarDeclaration _ parName) -> 
+        (parsEnv, parsLocs) = foldl (\(env, locs) (VarDeclaration _ parName _) -> 
                                        let (parAddr, locs1) = incPars locs
                                            parAddedEnv = Environment.insert parName parAddr env
                                        in (parAddedEnv, locs1)) (parsPushedEnv, updatedLocs') pars
@@ -363,14 +363,14 @@ module ThreeAddressCode where
   defaultGlobalVarSize :: Integer
   defaultGlobalVarSize = 4
 
-  generateTACs' :: LocEnv -> Locations -> Declarations -> TACFile -> TACFile
+  generateTACs' :: LocEnv -> Locations -> (Declarations ()) -> TACFile -> TACFile
   generateTACs' env locs [] acc = acc
-  generateTACs' env locs (decl@(VarDeclaration _ _):decls) (TACFile globalVars functions main) =
+  generateTACs' env locs (decl@VarDeclaration{}:decls) (TACFile globalVars functions main) =
     let globalVar = GlobalVarTAC (globals locs) defaultGlobalVarSize Nothing
         CompiledStm tacs1 env1 locs1 = declarationToTACs env locs decl
         newAcc = TACFile (globalVars `snoc` globalVar) functions main
     in generateTACs' env1 locs1 decls newAcc
-  generateTACs' env locs (decl@(FunDeclaration _ name _ _):decls) (TACFile globalVars functions main)   =
+  generateTACs' env locs (decl@(FunDeclaration _ name _ _ _):decls) (TACFile globalVars functions main)   =
     let CompiledStm tacs1 env1 locs1 = declarationToTACs env locs decl
         nrOfPars = pars locs1
         nrOfLocals = locals locs1
@@ -388,7 +388,7 @@ module ThreeAddressCode where
     in TACFile decls functions . Just $ FunctionTAC fTACName fTACNrOfPars fTACNrOfLocals fTACNrOfExps replacedTACs
   transformTACFile tacFile = tacFile
 
-  generateTACs :: Declarations -> TACFile
+  generateTACs :: (Declarations ()) -> TACFile
   generateTACs decls = transformTACFile $ generateTACs' Environment.empty emptyLocations decls emptyTACFile
 
   -- findTACsBelonging :: TACs -> TACs -> (TACs, TACs)

@@ -10,47 +10,47 @@ module AST where
     -- data Definition =               VarDefinition Type Name Exp
     --                                 | FunDefinition Type Name Declarations Body
 
-    data Declaration =              VarDeclaration Type Name
-                                    | FunDeclaration Type Name Declarations Body
+    data Declaration t =            VarDeclaration Type Name t
+                                    | FunDeclaration Type Name (Declarations t) (Body t) t
                                     deriving (Show, Eq)
 
-    type Declarations =             [Declaration]
+    type Declarations t =           [Declaration t]
 
-    data Statement =                AssignStmt LeftExpression Expression
-                                    | BlockStmt Body
-                                    | ExpStmt Expression
-                                    | ForStmt Statement Marker Expression Marker Statement Marker Body Marker
-                                    | IfElseStmt Expression Body Marker Body Marker
-                                    | IfStmt Expression Body Marker
-                                    | Return1Stmt Expression                        -- Returns a value
-                                    | Return0Stmt                                   -- Does not return a value
-                                    | ReadStmt LeftExpression
-                                    | WriteStmt LeftExpression
-                                    | WhileStmt Marker Expression Body Marker
+    data Statement t =              AssignStmt (LeftExpression t) (Expression t) t
+                                    | BlockStmt (Body t) t
+                                    | ExpStmt (Expression t) t
+                                    | ForStmt (Statement t) Marker (Expression t) Marker (Statement t) Marker (Body t) Marker t
+                                    | IfElseStmt (Expression t) (Body t) Marker (Body t) Marker t
+                                    | IfStmt (Expression t) (Body t) Marker t
+                                    | Return1Stmt (Expression t) t                       -- Returns a value
+                                    | Return0Stmt t                                      -- Does not return a value
+                                    | ReadStmt (LeftExpression t) t
+                                    | WriteStmt (LeftExpression t) t
+                                    | WhileStmt Marker (Expression t) (Body t) Marker t
                                     deriving (Show, Eq)
 
-    type Statements =               [Statement]
+    type Statements t               = [Statement t]
 
-    data Body =                     Body Declarations Statements
+    data Body t                     = Body (Declarations t) (Statements t) t
                                     deriving (Show, Eq)
 
-    data LeftExpression =           VariableRefExp Name
-                                    | ArrayRefExp Expression Expression
-                                    | DerefExp LeftExpression
-                                    deriving (Show, Eq) 
-
-    data Expression =               LeftExp LeftExpression
-                                    | BinaryExp BinOperator Expression Expression
-                                    | UnaryExp UnOperator Expression
-                                    | UnaryModifyingExp UnModifyingOperator LeftExpression
-                                    | FunctionAppExp Name Expressions
-                                    | LengthExp Expression
-                                    | AddressOf LeftExpression
-                                    | NumberExp Integer
-                                    | QCharExp Char
+    data LeftExpression t           = VariableRefExp Name t
+                                    | ArrayRefExp (Expression t) (Expression t) t
+                                    | DerefExp (LeftExpression t) t
                                     deriving (Show, Eq)
 
-    type Expressions =              [Expression]
+    data Expression t               = LeftExp (LeftExpression t) t
+                                    | BinaryExp BinOperator (Expression t) (Expression t) t
+                                    | UnaryExp UnOperator (Expression t) t
+                                    | UnaryModifyingExp UnModifyingOperator (LeftExpression t) t
+                                    | FunctionAppExp Name (Expressions t) t
+                                    | LengthExp (Expression t) t
+                                    | AddressOf (LeftExpression t) t
+                                    | NumberExp Integer t
+                                    | QCharExp Char t
+                                    deriving (Show, Eq)
+
+    type Expressions t              = [Expression t]
 
     data BinOperator =              PlusOp
                                     | MinusOp
@@ -66,6 +66,7 @@ module AST where
 
     data UnOperator =               MinusUnOp
                                     | NotOp
+                                    | UnModifyingOperator UnModifyingOperator
                                     deriving (Show, Eq)
 
     data UnModifyingOperator        = PrefixIncOp
@@ -88,16 +89,8 @@ module AST where
     nextLoc = do loc <- get
                  put $ loc + 1
 
-    -- instance Functor Wrapped where
-    --   fmap f (Wrapped loc v) = Wrapped loc $ f v
-
-    -- instance Applicative Wrapped where
-    --   pure = Wrap
-    --   Wrap f <*> Wrap x = Wrap (f x)
-
-    -- instance Monad Wrapped where
-    --   return t = TypeSuccess Environment.empty t
-    --   (TypeError msg) >>= _ = TypeError msg
-    --   (TypeSuccess env typ) >>= _ = TypeError "wefoijqei"
-    --   fail msg = TypeError msg
+    getLExpT :: (LeftExpression t) -> t
+    getLExpT (VariableRefExp _ t) = t
+    getLExpT (ArrayRefExp _ _ t) = t
+    getLExpT (DerefExp _ t) = t
 

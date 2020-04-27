@@ -6,7 +6,6 @@ HAPPY_OUTPUT_FILE = $(SOURCE_FOLDER)/Main.hs
 
 all:
 	clear && printf '\e[3J'
-	echo `pwd`
 	rm -f $(HAPPY_OUTPUT_FILE) $(OUTPUT_FILE)
 	rm -f $(SOURCE_FOLDER)/*.hi $(SOURCE_FOLDER)/*.o
 	happy $(SOURCE_FOLDER)/Main.y -o $(HAPPY_OUTPUT_FILE)
