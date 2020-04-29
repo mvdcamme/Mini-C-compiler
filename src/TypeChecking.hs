@@ -40,16 +40,21 @@ module TypeChecking where
     isIntegralType (Atom CharType) = return True
     isIntegralType _ = return False
 
+    getAtomicTypeType :: Type -> TypeChecked AtomicType
+    getAtomicTypeType (Atom CharType) = return CharType
+    getAtomicTypeType (Atom IntType) = return IntType
+    getAtomicTypeType _ = fail "Not an atomic type"
+
     isArrayType :: Type -> Bool
     isArrayType (ArrayType _ arrayElementType) = True
     isArrayType t = False
 
     equalsAtomicType :: AtomicType -> AtomicType -> Bool
-    equalsAtomicType atomTyp1 atomTyp2 = case (atomTyp1, atomTyp2) of 
-      (IntType, IntType) -> True
-      (IntType, CharType) -> True
-      (CharType, IntType) -> True
-      (_, _) -> False
+    equalsAtomicType atomTyp1 atomTyp2 = (atomTyp1 == atomTyp2) ||
+                                         case (atomTyp1, atomTyp2) of 
+                                           (IntType, CharType) -> True
+                                           (CharType, IntType) -> True
+                                           (_, _) -> False
 
     equalsType :: Type -> Type -> Bool
     equalsType (Atom atomTyp1) (Atom atomTyp2) = equalsAtomicType atomTyp1 atomTyp2
@@ -66,18 +71,19 @@ module TypeChecking where
     typeOfArrayType t = error $ printf "Type %s is not an array type" $ show t
 
     typeOfArrayRefExp :: TypeEnvironment -> UntypedExp -> UntypedExp -> TypedLExp
-    typeOfArrayRefExp env arrayExp indexExp = do (arrayType, tArrayExp) <- typeCheckExp env arrayExp
-                                                 arrayRefType <- typeOfArrayType arrayType
-                                                 (indexType, tIndexExp) <- typeCheckExp env indexExp
-                                                 -- TODO : check indexType is an integral type
-                                                 let tArrayRefExp = ArrayRefExp tArrayExp tIndexExp arrayRefType
-                                                 return (arrayRefType, tArrayRefExp)
+    typeOfArrayRefExp env arrayExp indexExp =
+      do (arrayType, tArrayExp) <- typeCheckExp env arrayExp
+         arrayRefType <- typeOfArrayType arrayType
+         (indexType, tIndexExp) <- typeCheckExp env indexExp
+         -- TODO : check indexType is an integral type
+         let tArrayRefExp = ArrayRefExp tArrayExp tIndexExp arrayRefType
+         return (arrayRefType, tArrayRefExp)
 
     typeOfIntegralUnOp :: TypeEnvironment -> UnOperator -> UntypedExp -> TypedExp
     typeOfIntegralUnOp env unOp exp =
       do (expType, tExp) <- typeCheckExp env exp
          cond <- isIntegralType expType
-         let unOpType = Atom IntType
+         let unOpType = expType
          if cond
          then return $ (unOpType, UnaryExp unOp tExp unOpType)
          else error $ printf "%s expected integral type, received a %s instead" (show unOp) $ show tExp
@@ -88,9 +94,11 @@ module TypeChecking where
          (exp2Type, tExp2) <- typeCheckExp env exp2
          cond1 <- isIntegralType exp1Type
          cond2 <- isIntegralType exp2Type
-         let unOpType = Atom IntType
          if cond1 && cond2
-         then return (unOpType, BinaryExp binOp tExp1 tExp2 unOpType)
+         then do atom1Type <- getAtomicTypeType exp1Type
+                 atom2Type <- getAtomicTypeType exp2Type
+                 let binOpType = Atom $ castAtomicTypes atom1Type atom2Type
+                 return (binOpType, BinaryExp binOp tExp1 tExp2 binOpType)
          else error $ printf "%s expected integral types, received a %s and a %s instead" (show binOp) (show tExp1) $ show tExp2
 
     typeOfBinaryExp :: TypeEnvironment -> UntypedExp -> UntypedExp -> BinOperator -> TypedExp
@@ -101,7 +109,7 @@ module TypeChecking where
       Prelude.foldl (\prev curr -> let (exp, expectedType) = curr
                                    in do tExps <- prev
                                          (expType, tExp) <- typeCheckExp env exp
-                                         if expType == expectedType
+                                         if equalsType expType expectedType
                                          then return (tExps `snoc` tExp)
                                          else fail $ printf "%s was expected to be of type %s; is of type %s instead" (show exp) (show tExp) (show expectedType))
                     (return []) $
@@ -116,17 +124,23 @@ module TypeChecking where
       other -> error $ printf "Operator in function application has incorrect type: %s" $ show other
 
     typeOfLengthExp :: TypeEnvironment -> UntypedExp -> TypedExp
-    typeOfLengthExp env exp = do (expType, tExp) <- typeCheckExp env exp
-                                 if isArrayType expType
-                                 then let typ = Atom IntType in return (typ, LengthExp tExp typ)
-                                 else error $ printf "Length expected an array, received a %s" $ show tExp
+    typeOfLengthExp env exp =
+      do (expType, tExp) <- typeCheckExp env exp
+         if isArrayType expType
+         then let typ = Atom IntType in return (typ, LengthExp tExp typ)
+         else error $ printf "Length expected an array, received a %s" $ show tExp
       
     typeOfUnaryExp :: TypeEnvironment -> UntypedExp -> UnOperator -> TypedExp
     typeOfUnaryExp env exp unOp = typeOfIntegralUnOp env unOp exp
 
     typeOfUnaryModifyingExp :: TypeEnvironment -> UntypedLExp -> UnModifyingOperator -> TypedExp
     typeOfUnaryModifyingExp env lexp unOp =
-      typeOfIntegralUnOp env (UnModifyingOperator unOp) (LeftExp lexp $ getLExpT lexp)
+      do (expType, tLexp) <- typeCheckLExp env lexp
+         cond <- isIntegralType expType
+         let unOpType = expType
+         if cond
+         then return $ (unOpType, UnaryModifyingExp unOp tLexp unOpType)
+         else error $ printf "%s expected integral type, received a %s instead" (show unOp) $ show tLexp
 
     typeOfVariableRefExp :: TypeEnvironment -> Name -> TypedLExp
     typeOfVariableRefExp env var = case Environment.lookup var env of
@@ -144,8 +158,8 @@ module TypeChecking where
 
     typeCheckExp :: TypeEnvironment -> UntypedExp -> TypedExp
     typeCheckExp env exp = case exp of
-        NumberExp n _ -> let typ = Atom IntType in return (typ, NumberExp n typ)
-        QCharExp c _ -> let typ = Atom CharType in return (typ, QCharExp c typ)
+        NumberExp n _ -> let typ = Atom lowestAtomicType in return (typ, NumberExp n typ)
+        QCharExp c _ -> let typ = Atom lowestAtomicType in return (typ, QCharExp c typ)
         BinaryExp binOp exp1 exp2 _ -> typeOfBinaryExp env exp1 exp2 binOp
         FunctionAppExp name exps _ -> typeOfFunctionAppExp env name exps
         LengthExp exp _ -> typeOfLengthExp env exp
@@ -165,13 +179,14 @@ module TypeChecking where
         VariableRefExp var _ -> do (varType, tVar) <- typeOfVariableRefExp env var
                                    (expType, tExp) <- typeCheckExp env exp
                                    let tLexp = VariableRefExp var varType
-                                   if (expType == varType)
+                                   if (equalsType expType varType)
                                    then return (void, AssignStmt tLexp tExp void)
-                                   else error $ printf "Assigning incorrect type %s to variable %s (of type %s)" (show tExp) var $ show expType
+                                   else error $ printf "Assigning incorrect type %s to variable %s (of type %s)" (show tExp) var $ show varType
         ArrayRefExp array idx _ -> do (idxType, tIdx) <- typeCheckExp env idx
                                       (expType, tExp) <- typeCheckExp env exp
                                       (arrayExpType, tArrayExp) <- typeCheckExp env array
-                                      if (idxType /= Atom IntType)
+                                      isIntegral <- isIntegralType idxType
+                                      if (not isIntegral)
                                       then error $ printf "Incorrect type for the index-expression: expected Integral type, but is %s" $ show idxType
                                       else if (arrayExpType /= expType)
                                            then error $ printf "Assigning incorrect type %s to array-element of type %s" (show tExp) $ show tArrayExp
@@ -240,15 +255,6 @@ module TypeChecking where
     declarationsToTypes [] = []
     declarationsToTypes ((VarDeclaration typ _ _):decls) = typ : declarationsToTypes decls
     declarationsToTypes ((FunDeclaration retTyp _ parDecls _ _):decls) = (ArrowType (declarationsToTypes parDecls) retTyp) : declarationsToTypes decls
-
-    -- typeCheckFunction :: TypeEnvironment -> Type -> UntypedDeclarations -> UntypedBody -> TypedBody
-    -- typeCheckFunction env returnType pars body =
-    --   -- Push new frame for the function's parameters
-    --   let frameAddedEnv = Environment.push env
-    --         -- Add parameters to the environment
-    --   in do (updatedEnv, tDecls) <- typeCheckDeclarations' frameAddedEnv pars []
-    --         -- Typecheck the function's body
-    --         typeCheckBlock updatedEnv body
 
     typeCheckDeclaration :: TypeEnvironment -> UntypedDeclaration -> TypedDeclaration
     typeCheckDeclaration env (VarDeclaration typ name _) =

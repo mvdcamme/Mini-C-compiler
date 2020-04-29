@@ -2,10 +2,10 @@ module Type where
 
   import Environment
 
-  data AtomicType =       IntType
+  data AtomicType =       VoidType
                           | CharType
-                          | VoidType
-                          deriving (Show, Eq)
+                          | IntType
+                          deriving (Show, Eq, Ord)
 
   data Type =             Atom AtomicType
                           | ArrowType [Type] Type
@@ -14,3 +14,11 @@ module Type where
                           deriving (Show, Eq)
 
   type TypeEnvironment =  GenericEnvironment Type
+
+  lowestAtomicType :: AtomicType
+  lowestAtomicType = CharType
+
+  castAtomicTypes :: AtomicType -> AtomicType -> AtomicType
+  castAtomicTypes a b
+    | a == b = a
+    | otherwise = max a b
