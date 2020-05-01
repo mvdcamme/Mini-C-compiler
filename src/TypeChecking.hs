@@ -65,6 +65,8 @@ module TypeChecking where
            f = \(a, b) -> equalsType a b
        in all f zipped
     equalsType (ArrayType size1 resultType1) (ArrayType size2 resultType2) = (size1 == size2) && (resultType1 == resultType2) --  TODO
+    equalsType (PointerType pointedTo1) (PointerType pointedTo2) = equalsType pointedTo1 pointedTo2
+    equalsType _ _ = False
 
     typeOfArrayType :: Type -> TypeChecked Type
     typeOfArrayType (ArrayType _ arrayElementType) = return arrayElementType

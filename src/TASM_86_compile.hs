@@ -3,6 +3,7 @@ module TASM_86_Compile where
   import Data.Char
   import Data.List
   import Data.List.Extra
+  import Debug.Trace
 
   import AST
   import TASM_86
@@ -25,15 +26,15 @@ module TASM_86_Compile where
   inputToArg :: Input -> Arg
   inputToArg (TAC.Literal (IntValue i)) = TASM_86.Literal i
   inputToArg (TAC.Literal (CharValue c)) = TASM_86.Literal . toInteger $ ord c
-  inputToArg (TAC.InAddr (TAC.Local address)) = Memory $ Indirect (addressToLocalOffset address) BP
-  inputToArg (TAC.InAddr (TAC.Parameter address)) = Memory $ TASM_86.Parameter address
-  inputToArg (TAC.InAddr (TAC.Global address)) = Memory $ TASM_86.Global address
+  inputToArg (TAC.InAddr (TAC.Local address _)) = Memory $ Indirect (addressToLocalOffset address) BP
+  inputToArg (TAC.InAddr (TAC.Parameter address _)) = Memory $ TASM_86.Parameter address
+  inputToArg (TAC.InAddr (TAC.Global address _)) = Memory $ TASM_86.Global address
   -- inputToArg (TAC.InAddr (TAC.TACLocationPointsTo address)) = Memory $ TASM_86.Global address
 
   outputToArg :: Output -> Arg
-  outputToArg (TAC.OutAddr (Local address)) = Memory $ Indirect (addressToLocalOffset address) BP
-  outputToArg (TAC.OutAddr (TAC.Parameter address)) = Memory $ TASM_86.Parameter address
-  outputToArg (TAC.OutAddr (TAC.Global address)) = Memory $ TASM_86.Global address
+  outputToArg (TAC.OutAddr (Local address _)) = Memory $ Indirect (addressToLocalOffset address) BP
+  outputToArg (TAC.OutAddr (TAC.Parameter address _)) = Memory $ TASM_86.Parameter address
+  outputToArg (TAC.OutAddr (TAC.Global address _)) = Memory $ TASM_86.Global address
   -- outputToArg (TAC.OutAddr (TACLocationPointsTo tacLoc)) = Memory $ TASM_86.Global 99
 
   saving :: [Register] -> Operations -> Operations
@@ -94,7 +95,7 @@ module TASM_86_Compile where
   makeRemoveParsOp 0 = []
   makeRemoveParsOp n =
     let argsSize = n * dwordSize
-    in [SubOp sp $ TASM_86.Literal argsSize]
+    in [AddOp sp $ TASM_86.Literal argsSize]
 
   compileTAC :: TAC -> TASM_86_Compiled ()
   -- Arithmetic
@@ -159,6 +160,18 @@ module TASM_86_Compile where
     let arg1 = inputToArg in1
         out' = outputToArg out
     in fromOps $ makeMovOp out' arg1 SizeDoubleWord
+  -- Casting
+  compileTAC (CstCode in1 (OutAddr (TACLocationPointsTo out))) =
+    let arg1 = inputToArg in1
+        out' = outputToArg $ OutAddr out
+        size = SizeDoubleWord
+    in (fromOps $ saving [EAX, EBX]
+                         [MovOp eax out' size, MovOp ebx arg1 size,
+                          MovOp (DerefRegister EAX) ebx size])
+  compileTAC (CstCode in1 out) =
+    let arg1 = inputToArg in1
+        out' = outputToArg out
+    in fromOps $ makeMovOp out' arg1 SizeDoubleWord
   -- Pointers and addresses
   compileTAC (AdrCode (InAddr (TACLocationPointsTo in1)) out) =
     let arg1 = inputToArg $ InAddr in1
@@ -182,6 +195,7 @@ module TASM_86_Compile where
              IntOp (LiteralWithString "16h"),
              MovOp ax (LiteralWithString "4C00h") SizeWord,
              IntOp (LiteralWithString "21h")]
+  -- compileTAC code = trace ("Unsupported: " ++ show code) (return ())
 
   compileFunTAC :: FunctionTAC -> TASM_86_Compiled ()
   compileFunTAC (FunctionTAC name pars locals exps tacs) =
@@ -378,11 +392,3 @@ module TASM_86_Compile where
         globalVarDefinitions = map compileGlobalVarTAC globals
         file = CompiledFile filePrelude globalVarDefinitions ops
     in compiledFileToString file
-    -- let 
-    --     (TASM_86_Compiled _ ops _) = maybe genericOps (\v -> compileFunTAC genericOps v) main
-    --     globalVarDefinitions = map compileGlobalVarTAC globals
-    --     file = CompiledFile filePrelude globalVarDefinitions ops
-    -- in compiledFileToString file
-
-  -- compile :: TACFile -> String
-  -- compile (TACFile globals functions) = show . compileFunTAC $ head function'"s
