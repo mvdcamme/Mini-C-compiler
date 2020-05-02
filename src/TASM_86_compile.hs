@@ -3,6 +3,7 @@ module TASM_86_Compile where
   import Data.Char
   import Data.List
   import Data.List.Extra
+  import Data.Map hiding (map, foldl) 
   import Debug.Trace
 
   import AST
@@ -10,10 +11,15 @@ module TASM_86_Compile where
   import TASM_86_Natives
   import TASM_86_Definitions
   import ThreeAddressCode as TAC
+  import Type
 
   conditionalLabelName :: String
   conditionalLabelName = "label"
 
+  byteSize :: Integer
+  byteSize = 1
+  wordSize :: Integer
+  wordSize = 2
   dwordSize :: Integer
   dwordSize = 4
 
@@ -26,16 +32,33 @@ module TASM_86_Compile where
   inputToArg :: Input -> Arg
   inputToArg (TAC.Literal (IntValue i)) = TASM_86.Literal i
   inputToArg (TAC.Literal (CharValue c)) = TASM_86.Literal . toInteger $ ord c
-  inputToArg (TAC.InAddr (TAC.Local address _)) = Memory $ Indirect (addressToLocalOffset address) BP
+  inputToArg (TAC.InAddr (TAC.Local address _)) = Memory $ Indirect address EBP
   inputToArg (TAC.InAddr (TAC.Parameter address _)) = Memory $ TASM_86.Parameter address
   inputToArg (TAC.InAddr (TAC.Global address _)) = Memory $ TASM_86.Global address
-  -- inputToArg (TAC.InAddr (TAC.TACLocationPointsTo address)) = Memory $ TASM_86.Global address
 
   outputToArg :: Output -> Arg
-  outputToArg (TAC.OutAddr (Local address _)) = Memory $ Indirect (addressToLocalOffset address) BP
+  outputToArg (TAC.OutAddr (TAC.Local address _)) = Memory $ Indirect address EBP
   outputToArg (TAC.OutAddr (TAC.Parameter address _)) = Memory $ TASM_86.Parameter address
   outputToArg (TAC.OutAddr (TAC.Global address _)) = Memory $ TASM_86.Global address
-  -- outputToArg (TAC.OutAddr (TACLocationPointsTo tacLoc)) = Memory $ TASM_86.Global 99
+
+  -- clearArg :: Arg -> Operations
+  -- clearArg TASM_86.Literal{} = []
+  -- clearArg TASM_86.LiteralWithString{} = []
+  -- clearArg mem@Memory{} = [MovOp mem $ TASM_86.Literal 0] -- add size
+  -- clearArg reg@Register{} = [XorOp reg reg]
+  -- clearArg reg@DerefRegister{} = [MovOp reg $ TASM_86.Literal 0] -- add size
+
+  -- castToHigher :: Register -> SizeEnum -> (Register, Operations)
+  -- castToHigher reg size =
+  --   let newReg = getRegOfSize reg size
+  --       clear = clearArg (Register newReg)
+  --   in
+
+  -- castInputToOutput :: Input -> Output -> [Operations]
+  -- castInputToOutput TAC.Literal{} _ = [] -- Shouldn't happen?
+  -- castInputToOutput (TAC.InAddr inLoc) (TAC.OutAddr outLoc) =
+  --   let inSize = typeToSize $ getType inLoc
+  --       outSize = typeToSize $ getType outLoc
 
   saving :: [Register] -> Operations -> Operations
   saving regs ops =
@@ -51,9 +74,6 @@ module TASM_86_Compile where
   -- Can't directly move between two memory locations
   makeMovOp :: Arg -> Arg -> SizeEnum -> Operations
   makeMovOp dest source size = makeIndirectOp dest source size MovOp
-  -- makeMovOp dest@(Memory _) source@(Memory _) size =
-  --   saving [EAX] [MovOp eax source size, MovOp dest eax size]
-  -- makeMovOp dest source size = [MovOp dest source size]
 
   makePrefixOp :: Input -> Output -> (Arg -> Operation) -> Operations
   makePrefixOp in1 out create = 
@@ -115,10 +135,10 @@ module TASM_86_Compile where
         movOut = makeMovOp out' eax SizeDoubleWord
         ops = saving [EAX] (movIn1 ++ [SubOp eax arg2] ++ movOut)
     in fromOps ops
-  compileTAC (PrefixIncCode in1 out) = (fromOps $ makePrefixOp in1 out IncOp)
-  compileTAC (SuffixIncCode in1 out) = (fromOps $ makeSuffixOp in1 out IncOp)
-  compileTAC (PrefixDecCode in1 out) = (fromOps $ makePrefixOp in1 out DecOp)
-  compileTAC (SuffixDecCode in1 out) = (fromOps $ makeSuffixOp in1 out DecOp)
+  compileTAC (PrefixIncCode in1 out) = fromOps $ makePrefixOp in1 out IncOp
+  compileTAC (SuffixIncCode in1 out) = fromOps $ makeSuffixOp in1 out IncOp
+  compileTAC (PrefixDecCode in1 out) = fromOps $ makePrefixOp in1 out DecOp
+  compileTAC (SuffixDecCode in1 out) = fromOps $ makeSuffixOp in1 out DecOp
   -- Comparison
   compileTAC (EqlCode in1 in2 out) = makeComparisonExp in1 in2 out JeOp
   compileTAC (NqlCode in1 in2 out) = makeComparisonExp in1 in2 out JneOp
@@ -191,18 +211,21 @@ module TASM_86_Compile where
         out' = outputToArg out
     in fromOps $ makeMovOp out' arg1 SizeDoubleWord
   compileTAC ExtCode =
-    fromOps [MovOp ah (LiteralWithString "00h") SizeByte,
-             IntOp (LiteralWithString "16h"),
+    fromOps [-- MovOp ah (LiteralWithString "00h") SizeByte,
+             -- IntOp (LiteralWithString "16h"),
              MovOp ax (LiteralWithString "4C00h") SizeWord,
              IntOp (LiteralWithString "21h")]
   -- compileTAC code = trace ("Unsupported: " ++ show code) (return ())
 
+  calculateFrameSize :: LocalAddresses -> Integer
+  calculateFrameSize localAddresses =
+    let sizes = Data.Map.fold (\typ acc -> typeToSize typ : acc) [] localAddresses
+    in foldl (+) 0 $ map sizeToInteger sizes
+
   compileFunTAC :: FunctionTAC -> TASM_86_Compiled ()
-  compileFunTAC (FunctionTAC name pars locals exps tacs) =
+  compileFunTAC (FunctionTAC name pars locals exps tacs localAddresses) =
     let parsList = [0 .. pars - 1]
-        -- makeArgOp = \i -> ArgOp i SizeDoubleWord
-        -- argOps = map makeArgOp parsList
-        -- functionPrelude = [StartprocOp name] ++ argOps
+        frameSize = calculateFrameSize localAddresses
         functionPreludeOps = [StartprocOp name]
         functionEnterOps = [PushOp bp SizeDoubleWord, MovOp bp sp SizeDoubleWord, SubOp sp $ TASM_86.Literal (exps * dwordSize)]
         mainSpecificOps = if (name == "main") then [StiOp, CldOp] else []
@@ -210,7 +233,7 @@ module TASM_86_Compile where
     in do fromOps functionPreludeOps
           fromOps functionEnterOps
           fromOps mainSpecificOps
-          foldl (\acc tac -> acc >> compileTAC tac) (return ()) tacs
+          mapM (\tac -> compileTAC tac) tacs
           fromOps functionExitludeOps
 
   compileGlobalVarTAC :: GlobalVarTAC -> GlobalVarDefinition
@@ -247,15 +270,6 @@ module TASM_86_Compile where
   regToString DH  = "dh"
   regToString DL  = "dl"
 
-  -- nrToParName :: Integer -> VarName
-  -- nrToParName i = "arg_" ++ show i
-
-  -- parNameToString :: VarName -> String
-  -- parNameToString name = "@@" ++ name
-
-  -- parNrToString :: Integer -> String
-  -- parNrToString i = parNameToString $ nrToParName i
-
   sizeEnumToString :: SizeEnum -> String
   sizeEnumToString SizeByte         = "byte"
   sizeEnumToString SizeWord         = "word"
@@ -268,7 +282,7 @@ module TASM_86_Compile where
   argToString (TASM_86.Literal i) = show i
   argToString (TASM_86.LiteralWithString s) = s
   argToString (Register reg) = regToString reg
-  argToString (Memory (TASM_86.Parameter i)) = argToString (Memory $ Indirect (idxToParOffset i) BP)
+  argToString (Memory (TASM_86.Parameter i)) = argToString (Memory $ Indirect (idxToParOffset i) EBP)
   argToString (Memory (Indirect i reg)) =
     let regName = regToString reg
     in if i < 0

@@ -6,6 +6,7 @@ module TASM_86 where
 
   import AST
   import ThreeAddressCode
+  import Type
 
   data Register             = BP
                               | EBP
@@ -38,8 +39,8 @@ module TASM_86 where
                               | DH
                               deriving (Show, Eq)
 
-  data MemoryReference      = Parameter Integer
-                              | Indirect Integer Register
+  data MemoryReference      = Parameter Address
+                              | Indirect Address Register
                               | Global Integer
                               deriving (Show, Eq)
 
@@ -179,3 +180,52 @@ module TASM_86 where
 
   retReg :: Arg -- The register where a function's return value will be placed in
   retReg = eax
+
+  typeToSize :: Type -> SizeEnum
+  typeToSize (Atom VoidType) = SizeByte       -- TODO: Shouldn't happen
+  typeToSize (ArrayType _ _) = SizeDoubleWord -- TODO: Shouldn't happen
+  typeToSize (ArrowType _ _) = SizeDoubleWord -- TODO: Shouldn't happen
+  typeToSize (PointerType _) = SizeDoubleWord
+  typeToSize (Atom CharType) = SizeByte
+  typeToSize (Atom IntType)  = SizeDoubleWord
+
+  sizeToInteger :: SizeEnum -> Integer
+  sizeToInteger SizeByte = 1
+  sizeToInteger SizeWord = 2
+  sizeToInteger SizeDoubleWord = 4
+
+  regVariantToGeneralReg :: Register -> Register
+  regVariantToGeneralReg AL  = EAX
+  regVariantToGeneralReg AH  = EAX
+  regVariantToGeneralReg AX  = EAX
+  regVariantToGeneralReg EAX = EAX
+  regVariantToGeneralReg BL  = EBX
+  regVariantToGeneralReg BH  = EBX
+  regVariantToGeneralReg BX  = EBX
+  regVariantToGeneralReg EBX = EBX
+  regVariantToGeneralReg CL  = ECX
+  regVariantToGeneralReg CH  = ECX
+  regVariantToGeneralReg CX  = ECX
+  regVariantToGeneralReg ECX = ECX
+  regVariantToGeneralReg DL  = EDX
+  regVariantToGeneralReg DH  = EDX
+  regVariantToGeneralReg DX  = EDX
+  regVariantToGeneralReg EDX = EDX
+
+  getRegOfSize' :: Register -> SizeEnum -> Register
+  getRegOfSize' EAX SizeByte        = AL
+  getRegOfSize' EBX SizeByte        = BL
+  getRegOfSize' ECX SizeByte        = CL
+  getRegOfSize' EDX SizeByte        = DL
+  getRegOfSize' EAX SizeWord        = AX
+  getRegOfSize' EBX SizeWord        = BX
+  getRegOfSize' ECX SizeWord        = CX
+  getRegOfSize' EDX SizeWord        = DX
+  getRegOfSize' EAX SizeDoubleWord  = EAX
+  getRegOfSize' EBX SizeDoubleWord  = EBX
+  getRegOfSize' ECX SizeDoubleWord  = ECX
+  getRegOfSize' EDX SizeDoubleWord  = EDX
+
+  getRegOfSize :: Register -> SizeEnum -> Register
+  getRegOfSize reg size = getRegOfSize' (regVariantToGeneralReg reg) size
+

@@ -8,8 +8,8 @@ module Type where
                           deriving (Show, Eq, Ord)
 
   data Type =             Atom AtomicType
-                          | ArrowType [Type] Type
                           | ArrayType Int Type
+                          | ArrowType [Type] Type
                           | PointerType Type
                           deriving (Show, Eq)
 

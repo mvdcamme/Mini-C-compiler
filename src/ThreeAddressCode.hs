@@ -3,6 +3,7 @@ module ThreeAddressCode where
   import Control.Monad.State
   import Data.List.Extra
   import Data.List.Split
+  import Data.Map hiding (map) 
   import Debug.Trace
 
   import AST
@@ -86,9 +87,12 @@ module ThreeAddressCode where
 
   type TACs                 = [TAC]
 
+  type LocalAddresses       = Map Address Type
+
   data TACStateState        = TACStateState { tacs :: TACs
                                             , locEnv :: LocEnv
-                                            , locs :: Locations }
+                                            , locs :: Locations
+                                            , localAddresses :: LocalAddresses }
                               deriving (Show, Eq)
 
   type TACState a           = State TACStateState a
@@ -100,6 +104,7 @@ module ThreeAddressCode where
                                           , fTACNrOfLocals :: Integer
                                           , fTACNrOfExps :: Integer
                                           , fTACBody :: TACs
+                                          , fTACLocalAddresses :: LocalAddresses
                                         } deriving (Show, Eq)
   data GlobalVarTAC         = GlobalVarTAC { gvTACAddress :: Address
                                            , gvSize :: Integer
@@ -160,15 +165,19 @@ module ThreeAddressCode where
   incLocals :: Type -> TACState TACLocation
   incLocals typ =
     do state <- get
-       let locs' = (locs state) { locals = (locals $ locs state) + 1, exps = (exps $ locs state) + 1 }
-       put state{locs = locs'}
-       return $ Local (locals $ locs state) typ
+       let newAddr = locals $ locs state
+       let locs' = (locs state) { locals = newAddr + 1, exps = (exps $ locs state) + 1 }
+       let locals' = Data.Map.insert newAddr typ $ localAddresses state
+       put state{locs = locs', localAddresses = locals'}
+       return $ Local newAddr typ
   incExps :: Type -> TACState TACLocation
   incExps typ =
     do state <- get
-       let locs' = (locs state) { exps = (exps $ locs state) + 1 }
-       put state{locs = locs'}
-       return $ Local (exps $ locs state) typ
+       let newAddr = exps $ locs state
+       let locs' = (locs state) { exps = newAddr + 1 }
+       let locals' = Data.Map.insert newAddr typ $ localAddresses state
+       put state{locs = locs', localAddresses = locals'}
+       return $ Local newAddr typ
 
   addTAC :: TAC -> TACState ()
   addTAC tac =
@@ -469,25 +478,28 @@ module ThreeAddressCode where
   generateTACs' locEnv locs (decl@VarDeclaration{}:decls) (TACFile globalVars functions main) =
     let globalAddr = globals locs
         globalVar = GlobalVarTAC globalAddr defaultGlobalVarSize Nothing
-        (_, TACStateState _ locEnv' locs') = runState (declarationToTACs decl) $ TACStateState [] locEnv locs
+        newState = TACStateState [] locEnv locs Data.Map.empty
+        (_, TACStateState _ locEnv' locs' localAddresses) = runState (declarationToTACs decl) newState
         newAcc = TACFile (globalVars `snoc` globalVar) functions main
     in generateTACs' locEnv' locs' decls newAcc
   generateTACs' locEnv locs (decl@(FunDeclaration _ name _ _ _):decls) (TACFile globalVars functions main)   =
-    let (_, TACStateState tacs locEnv' locs') = runState (declarationToTACs decl) $ TACStateState [] locEnv locs
+    let newState = TACStateState [] locEnv locs Data.Map.empty
+        (_, TACStateState tacs locEnv' locs' localAddresses) = runState (declarationToTACs decl) newState
         nrOfPars = pars locs'
         nrOfLocals = locals locs'
         nrOfExps = exps locs'
-        functionTAC = FunctionTAC name nrOfPars nrOfLocals nrOfExps tacs
+        functionTAC = FunctionTAC name nrOfPars nrOfLocals nrOfExps tacs localAddresses
         newAcc =  if name == "main"
                   then TACFile globalVars functions $ Just functionTAC
                   else TACFile globalVars (functions `snoc` functionTAC) main
     in generateTACs' locEnv' locs' decls newAcc
 
   transformTACFile :: TACFile -> TACFile
-  transformTACFile (TACFile decls functions (Just (FunctionTAC fTACName fTACNrOfPars fTACNrOfLocals fTACNrOfExps fTACBody))) =
+  transformTACFile (TACFile decls functions (Just functionTAC)) =
     let replaceRet = \tac -> case tac of Rt0Code -> ExtCode; other -> other
-        replacedTACs = map replaceRet fTACBody
-    in TACFile decls functions . Just $ FunctionTAC fTACName fTACNrOfPars fTACNrOfLocals fTACNrOfExps replacedTACs
+        replacedTACs = map replaceRet $ fTACBody functionTAC
+        newTACFile = functionTAC{fTACBody = replacedTACs}
+    in TACFile decls functions $ Just newTACFile
   transformTACFile tacFile = tacFile
 
   generateTACs :: (Declarations Type) -> TACFile
