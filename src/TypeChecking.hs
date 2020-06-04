@@ -17,6 +17,7 @@ module TypeChecking where
     type UntypedExp               = Expression ()
     type UntypedExps              = Expressions ()
     type UntypedLExp              = LeftExpression ()
+    type UntypedPexp              = PointerExpression ()
     type UntypedStatement         = Statement ()
     type UntypedStatements        = Statements ()
     type UntypedDeclaration       = Declaration ()
@@ -26,6 +27,7 @@ module TypeChecking where
     type TypedExp                 = TypeChecked (Type, Expression Type)
     type TypedExps                = TypeChecked (Expressions Type)
     type TypedLExp                = TypeChecked (Type, LeftExpression Type)
+    type TypedPexp                = TypeChecked (Type, PointerExpression Type)
     type TypedStatement           = TypeChecked (Type, Statement Type)
     type TypedStatements          = TypeChecked (Type, Statements Type)
     type TypedDeclaration         = TypeChecked (TypeEnvironment, Declaration Type)
@@ -46,8 +48,18 @@ module TypeChecking where
     getAtomicTypeType _ = fail "Not an atomic type"
 
     isArrayType :: Type -> Bool
-    isArrayType (ArrayType _ arrayElementType) = True
+    isArrayType (ArrayType _ _) = True
     isArrayType t = False
+
+    isPointerType :: Type -> Bool
+    isPointerType (ArrayType _ _) = True
+    isPointerType (PointerType _) = True
+    isPointerType _ = False
+
+    isPointerTypePointingTo :: Type -> Type -> Bool
+    isPointerTypePointingTo (ArrayType _ t) pointingTo = t == pointingTo
+    isPointerTypePointingTo (PointerType t) pointingTo = t == pointingTo
+    isPointerTypePointingTo _ _ = False
 
     equalsAtomicType :: AtomicType -> AtomicType -> Bool
     equalsAtomicType atomTyp1 atomTyp2 = (atomTyp1 == atomTyp2) ||
@@ -64,17 +76,17 @@ module TypeChecking where
        let zipped = zip argTypes1 argTypes2
            f = \(a, b) -> equalsType a b
        in all f zipped
-    equalsType (ArrayType size1 resultType1) (ArrayType size2 resultType2) = (size1 == size2) && (resultType1 == resultType2) --  TODO
-    equalsType (PointerType pointedTo1) (PointerType pointedTo2) = equalsType pointedTo1 pointedTo2
+    equalsType (ArrayType size1 pointedTo) other = isPointerTypePointingTo other pointedTo
+    equalsType (PointerType pointedTo) other = isPointerTypePointingTo other pointedTo
     equalsType _ _ = False
 
     typeOfArrayType :: Type -> TypeChecked Type
     typeOfArrayType (ArrayType _ arrayElementType) = return arrayElementType
     typeOfArrayType t = error $ printf "Type %s is not an array type" $ show t
 
-    typeOfArrayRefExp :: TypeEnvironment -> UntypedExp -> UntypedExp -> TypedLExp
+    typeOfArrayRefExp :: TypeEnvironment -> UntypedLExp -> UntypedExp -> TypedLExp
     typeOfArrayRefExp env arrayExp indexExp =
-      do (arrayType, tArrayExp) <- typeCheckExp env arrayExp
+      do (arrayType, tArrayExp) <- typeCheckLExp env arrayExp
          arrayRefType <- typeOfArrayType arrayType
          (indexType, tIndexExp) <- typeCheckExp env indexExp
          -- TODO : check indexType is an integral type
@@ -106,13 +118,13 @@ module TypeChecking where
     typeOfBinaryExp :: TypeEnvironment -> UntypedExp -> UntypedExp -> BinOperator -> TypedExp
     typeOfBinaryExp env exp1 exp2 binOp = typeOfIntegralBinOp env binOp exp1 exp2 isIntegralType
 
-    expsMatchTypes :: TypeEnvironment -> UntypedExps -> [Type] -> TypedExps
+    expsMatchTypes :: TypeEnvironment -> UntypedExps -> [Type] -> TypeChecked [(Expression Type, Type)]
     expsMatchTypes env exps types =
       Prelude.foldl (\prev curr -> let (exp, expectedType) = curr
                                    in do tExps <- prev
                                          (expType, tExp) <- typeCheckExp env exp
                                          if equalsType expType expectedType
-                                         then return (tExps `snoc` tExp)
+                                         then return $ tExps `snoc` (tExp, expectedType)
                                          else fail $ printf "%s was expected to be of type %s; is of type %s instead" (show exp) (show tExp) (show expectedType))
                     (return []) $
                     zip exps types
@@ -121,7 +133,7 @@ module TypeChecking where
     typeOfFunctionAppExp env fName exps = case Environment.lookup fName env of
       Nothing -> unknownVariableRefError fName
       Just (ArrowType tArgs tResult) -> do tExps <- expsMatchTypes env exps tArgs
-                                           let tExp = FunctionAppExp fName tExps tResult
+                                           let tExp = FunctionAppWithTypedExp fName tExps tResult
                                            return (tResult, tExp)
       other -> error $ printf "Operator in function application has incorrect type: %s" $ show other
 
@@ -149,14 +161,27 @@ module TypeChecking where
       Just t -> return (t, VariableRefExp var t)
       Nothing -> unknownVariableRefError var
 
+    typeCheckPExp :: TypeEnvironment -> UntypedPexp -> TypedPexp
+    typeCheckPExp env (PointerExp lexp exp _) =
+      do (lexpType, tLexp) <- typeCheckLExp env lexp
+         (expType, tExp) <- typeCheckExp env exp
+         cond <- isIntegralType expType
+         if (not cond)
+         then error $ printf "Expression %s should be an integral type" (show tExp)
+         else case lexpType of
+            PointerType pointedTo -> return (PointerType pointedTo, PointerExp tLexp tExp $ PointerType pointedTo)
+            ArrayType _ pointedTo -> return (PointerType pointedTo, PointerExp tLexp tExp $ PointerType pointedTo)
+            _ -> error $ printf "Expression %s is not a pointer type" (show tLexp)
+
     typeCheckLExp :: TypeEnvironment -> UntypedLExp -> TypedLExp
     typeCheckLExp env (ArrayRefExp array index _) = typeOfArrayRefExp env array index
     typeCheckLExp env (VariableRefExp var _) = typeOfVariableRefExp env var
-    typeCheckLExp env (DerefExp lexp _) =
-      do (lexpType, tLexp) <- typeCheckLExp env lexp
-         case lexpType of
-            PointerType pointedTo -> return (pointedTo, DerefExp tLexp pointedTo)
-            _ -> error $ printf "Expression %s is not a pointer type" (show env)
+    typeCheckLExp env (DerefExp pexp _) =
+      do (pexpType, tPexp) <- typeCheckPExp env pexp
+         case pexpType of
+            PointerType pointedTo -> return (pointedTo, DerefExp tPexp pointedTo)
+            ArrayType _ pointedTo -> return (pointedTo, DerefExp tPexp pointedTo)
+            _ -> error $ printf "Expression %s is not a pointer type" (show tPexp)
 
     typeCheckExp :: TypeEnvironment -> UntypedExp -> TypedExp
     typeCheckExp env exp = case exp of
@@ -186,18 +211,22 @@ module TypeChecking where
                                    else error $ printf "Assigning incorrect type %s to variable %s (of type %s)" (show tExp) var $ show varType
         ArrayRefExp array idx _ -> do (idxType, tIdx) <- typeCheckExp env idx
                                       (expType, tExp) <- typeCheckExp env exp
-                                      (arrayExpType, tArrayExp) <- typeCheckExp env array
+                                      (arrayType, tArrayExp) <- typeCheckLExp env array
                                       isIntegral <- isIntegralType idxType
                                       if (not isIntegral)
                                       then error $ printf "Incorrect type for the index-expression: expected Integral type, but is %s" $ show idxType
-                                      else if (arrayExpType /= expType)
-                                           then error $ printf "Assigning incorrect type %s to array-element of type %s" (show tExp) $ show tArrayExp
-                                           else return (void, AssignStmt (ArrayRefExp tArrayExp tIdx arrayExpType) tExp void)
-        DerefExp lexp _ -> do (lexpType, tLexp) <- typeCheckLExp env lexp
+                                      else case arrayType of
+                                        ArrayType _ arrayExpType ->
+                                          if (arrayExpType /= expType)
+                                             then error $ printf "Assigning incorrect type %s to array-element of type %s" (show tExp) $ show tArrayExp
+                                             else return (void, AssignStmt (ArrayRefExp tArrayExp tIdx arrayExpType) tExp void)
+                                        _ -> error $ printf "Not an array-type: %s" $ show arrayType
+        DerefExp pexp _ -> do (pexpType, tPexp) <- typeCheckPExp env pexp
                               (expType, tExp) <- typeCheckExp env exp
-                              case lexpType of
-                                PointerType{} -> return (void, AssignStmt (DerefExp tLexp lexpType) tExp void)
-                                _ -> error $ printf "Expression %s is not a pointer type" (show tLexp)
+                              case pexpType of
+                                PointerType pointedTo -> return (void, AssignStmt (DerefExp tPexp pexpType) tExp void)
+                                ArrayType _ pointedTo -> return (void, AssignStmt (DerefExp tPexp pexpType) tExp void)
+                                _ -> error $ printf "Expression %s is not a pointer type" (show tPexp)
     typeCheckStatement env (BlockStmt block _) =
       do (blockType, tBlock) <- typeCheckBlock env block
          return (void, BlockStmt tBlock void)

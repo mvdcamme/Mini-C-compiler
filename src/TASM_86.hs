@@ -39,8 +39,8 @@ module TASM_86 where
                               | DH
                               deriving (Show, Eq)
 
-  data MemoryReference      = Parameter Address
-                              | Indirect Address Register
+  data MemoryReference      = Parameter Address SizeEnum
+                              | Indirect Address Register SizeEnum
                               | Global Integer
                               deriving (Show, Eq)
 
@@ -48,7 +48,7 @@ module TASM_86 where
                               | LiteralWithString String
                               | Register Register
                               | Memory MemoryReference
-                              | DerefRegister Register
+                              | DerefRegister Register SizeEnum
                               deriving (Show, Eq)
 
   data SizeEnum             = SizeByte
@@ -74,8 +74,8 @@ module TASM_86 where
   data Assumption           = Assumption Register Style
                               deriving (Show, Eq)
 
-  data Operation            = MovOp Arg Arg SizeEnum
-                              | PushOp Arg SizeEnum
+  data Operation            = MovOp Arg Arg
+                              | PushOp Arg
                               | PopOp Arg
                               | CallOp FunctionName
                               | EndprocOp FunctionName
@@ -92,6 +92,7 @@ module TASM_86 where
                               | JnzOp Label
                               | AddOp Arg Arg
                               | SubOp Arg Arg
+                              | MulOp Arg
                               | XorOp Arg Arg
                               | CmpOp Arg Arg
                               | DivOp Arg
@@ -112,6 +113,7 @@ module TASM_86 where
                               | StartSegment Segment
                               | End FunctionName
                               | Empty -- In case you want to add a newline, or a line consisting of only a comment
+                              | Comment String
                               deriving (Show, Eq)
   type Operations           = [Operation]
 
@@ -183,16 +185,26 @@ module TASM_86 where
 
   typeToSize :: Type -> SizeEnum
   typeToSize (Atom VoidType) = SizeByte       -- TODO: Shouldn't happen
-  typeToSize (ArrayType _ _) = SizeDoubleWord -- TODO: Shouldn't happen
-  typeToSize (ArrowType _ _) = SizeDoubleWord -- TODO: Shouldn't happen
+  typeToSize (ArrayType _ _) = SizeDoubleWord
   typeToSize (PointerType _) = SizeDoubleWord
-  typeToSize (Atom CharType) = SizeByte
+  typeToSize (Atom CharType) = SizeWord
   typeToSize (Atom IntType)  = SizeDoubleWord
 
+  byteSize :: Integer
+  byteSize = 1
+  wordSize :: Integer
+  wordSize = 2
+  dwordSize :: Integer
+  dwordSize = 4
+
   sizeToInteger :: SizeEnum -> Integer
-  sizeToInteger SizeByte = 1
-  sizeToInteger SizeWord = 2
-  sizeToInteger SizeDoubleWord = 4
+  sizeToInteger SizeByte = byteSize
+  sizeToInteger SizeWord = wordSize
+  sizeToInteger SizeDoubleWord = dwordSize
+
+  typeToInteger :: Type -> Integer
+  typeToInteger (ArrayType size typ) = size * typeToInteger typ
+  typeToInteger typ = sizeToInteger $ typeToSize typ
 
   regVariantToGeneralReg :: Register -> Register
   regVariantToGeneralReg AL  = EAX

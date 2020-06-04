@@ -3,44 +3,45 @@ module ThreeAddressCode where
   import Control.Monad.State
   import Data.List.Extra
   import Data.List.Split
-  import Data.Map hiding (map) 
+  import Data.Map hiding (map)
   import Debug.Trace
 
   import AST
   import Environment
   import Type
 
-  type Address =              Integer
+  type Address              =  Integer
 
-  data AtomicValue =          IntValue Integer
+  data AtomicValue          = IntValue Integer
                               | CharValue Char
                               deriving (Show, Eq)
 
-  data TACLocation =          Global Address Type
+  data TACLocation          = Global Address Type
                               | Local Address Type
                               | Parameter Address Type
                               | TACLocationPointsTo TACLocation
+                              | TACLocationPointsToIndexed TACLocation TACLocation
                               deriving (Show, Eq)
 
-  data Locations =            Locations { globals :: Address
+  data Locations            = Locations { globals :: Address
                                         , pars :: Address
                                         , locals :: Address
                                         , exps :: Address
                                         } deriving (Show, Eq)
 
-  type LocEnv =               GenericEnvironment TACLocation
+  type LocEnv               = GenericEnvironment TACLocation
 
-  data Input =                Literal AtomicValue
+  data Input                = Literal AtomicValue
                               | InAddr TACLocation
                               deriving (Show, Eq)
-  data Output =               OutAddr TACLocation
+  data Output               = OutAddr TACLocation
                               deriving (Show, Eq)
 
-  type FunctionName =         String
-  type VarName =              String
+  type FunctionName         = String
+  type VarName              = String
 
                               -- Arithmetic
-  data TAC                  =   AddCode Input Input Output              -- Add
+  data TAC                  =   AddCode Input Input Output            -- Add
                               | SubCode Input Input Output            -- Subtract
                               | MulCode Input Input Output            -- Multiply
                               | DivCode Input Input Output            -- Division
@@ -80,6 +81,7 @@ module ThreeAddressCode where
                               -- Pointers
                               | AdrCode Input Output                  -- Get address of input
                               | DrfCode Input Output                  -- Dereference address
+                              | ParCode Input Input Output            -- Pointer arithmetic
                               -- Machine operations
                               | MovCode Input Output                  -- Move: basically same as Assign, except the move itself doesn't produce an output. Mostly used to move expressions into slots
                               | ExtCode                               -- Exit program: TODO should get an input for the exit code
@@ -107,7 +109,7 @@ module ThreeAddressCode where
                                           , fTACLocalAddresses :: LocalAddresses
                                         } deriving (Show, Eq)
   data GlobalVarTAC         = GlobalVarTAC { gvTACAddress :: Address
-                                           , gvSize :: Integer
+                                           , gvType :: Type
                                            , gvInitValue :: Maybe Integer
                                            } deriving (Show, Eq)
   type FunctionTACs         = [FunctionTAC]
@@ -133,6 +135,7 @@ module ThreeAddressCode where
     getType (Local _ typ) = typ
     getType (Parameter _ typ) = typ
     getType (TACLocationPointsTo loc) = PointerType $ getType loc
+    getType (TACLocationPointsToIndexed loc _) = PointerType $ getType loc
 
   instance HasType Input where
     getType Literal{} = Atom lowestAtomicType
@@ -150,23 +153,27 @@ module ThreeAddressCode where
   readFunName :: FunctionName
   readFunName = "read"
 
+  incAddressByType :: Type -> Address -> Address
+  incAddressByType (ArrayType size typ) = (+) size
+  incAddressByType _ = (+) 1
+
   incGlobals :: Type -> TACState TACLocation
   incGlobals typ =
     do state <- get
-       let locs' = (locs state) { globals = (globals $ locs state) + 1 }
+       let locs' = (locs state) { globals = incAddressByType typ (globals $ locs state) }
        put state{locs = locs'}
        return $ Global (globals $ locs state) typ -- Uses old "current" global address
   incPars :: Type -> TACState TACLocation
   incPars typ =
     do state <- get
-       let locs' = (locs state) { pars = (pars $ locs state) + 1 }
+       let locs' = (locs state) { pars = incAddressByType typ (pars $ locs state) }
        put state{locs = locs'}
        return $ Parameter (pars $ locs state) typ
   incLocals :: Type -> TACState TACLocation
   incLocals typ =
     do state <- get
        let newAddr = locals $ locs state
-       let locs' = (locs state) { locals = newAddr + 1, exps = (exps $ locs state) + 1 }
+       let locs' = (locs state) { locals = incAddressByType typ newAddr, exps = incAddressByType typ (exps $ locs state) }
        let locals' = Data.Map.insert newAddr typ $ localAddresses state
        put state{locs = locs', localAddresses = locals'}
        return $ Local newAddr typ
@@ -174,7 +181,7 @@ module ThreeAddressCode where
   incExps typ =
     do state <- get
        let newAddr = exps $ locs state
-       let locs' = (locs state) { exps = newAddr + 1 }
+       let locs' = (locs state) { exps = incAddressByType typ newAddr }
        let locals' = Data.Map.insert newAddr typ $ localAddresses state
        put state{locs = locs', localAddresses = locals'}
        return $ Local newAddr typ
@@ -290,6 +297,21 @@ module ThreeAddressCode where
                   return $ (InAddr argInputAddr : acc)) ([] :: [Input]) exps
        addTACs $ (map ArgCode inputAddresses)
 
+  compileArgsWithTypes :: [(Expression Type, Type)] -> CompiledStm
+  compileArgsWithTypes argTuples =
+    do inputAddresses <- foldM (\acc (exp, expectedTyp) -> 
+               do let actualTyp = getExpT exp
+                  argInputAddr <- expToTACs exp
+                  argInputAddr' <- if (actualTyp /= expectedTyp)
+                                   then do { outAddr <- incExps expectedTyp;
+                                             addTAC . CstCode (InAddr argInputAddr) $ OutAddr outAddr;
+                                             return outAddr;
+                                           }
+                                   else return argInputAddr
+                  return $ (InAddr argInputAddr' : acc)) ([] :: [Input]) argTuples
+       addTACs $ (map ArgCode inputAddresses)
+
+
   lookupInput :: Name -> TACState TACLocation -- TODO should produce an error if name cannot be found
   lookupInput name =
     do state <- get
@@ -308,6 +330,14 @@ module ThreeAddressCode where
        addTAC tac
        return outputAddr
 
+  pexpToTACs :: PointerExpression Type -> CompiledExp
+  pexpToTACs (PointerExp lexp exp typ) =
+    do expAddr <- expToTACs exp
+       lexpAddr <- expToTACs . LeftExp lexp $ getLExpT lexp
+       outAddr <- incExps typ
+       addTAC $ ParCode (InAddr expAddr) (InAddr lexpAddr) $ OutAddr outAddr
+       return outAddr
+
   expToTACs :: Expression Type -> CompiledExp
   expToTACs atomic@(NumberExp integer (Atom typ)) = atomicToTACs (IntValue integer) typ
   expToTACs atomic@(QCharExp char (Atom typ)) = atomicToTACs (CharValue char) typ
@@ -322,8 +352,12 @@ module ThreeAddressCode where
   expToTACs (LeftExp (VariableRefExp name _) typ) =
     do address <- lookupInput name
        return address
-  expToTACs (LeftExp (DerefExp lexp _) typ) =
-    do inAddr <- expToTACs . LeftExp lexp $ getLExpT lexp
+  expToTACs (LeftExp (ArrayRefExp arrExp idxExp _) typ) =
+    do arrAddr <- expToTACs . LeftExp arrExp $ getLExpT arrExp
+       idxAddr <- expToTACs idxExp
+       return $ TACLocationPointsToIndexed arrAddr idxAddr
+  expToTACs (LeftExp (DerefExp pexp _) typ) =
+    do inAddr <- pexpToTACs pexp
        outAddr <- incExps typ
        let tac = DrfCode (InAddr inAddr) $ OutAddr outAddr
        addTAC tac
@@ -334,6 +368,15 @@ module ThreeAddressCode where
     do compileArgs args 
        retAddress <- incExps typ
        let nrOfPars = toInteger $ length args
+       let callCode = if name == printFunName
+                         then PrtCode nrOfPars
+                         else CllCode name nrOfPars $ OutAddr retAddress
+       addTAC callCode
+       return retAddress
+  expToTACs (FunctionAppWithTypedExp name argTuples typ) =
+    do compileArgsWithTypes argTuples 
+       retAddress <- incExps typ
+       let nrOfPars = toInteger $ length argTuples
        let callCode = if name == printFunName
                          then PrtCode nrOfPars
                          else CllCode name nrOfPars $ OutAddr retAddress
@@ -407,12 +450,13 @@ module ThreeAddressCode where
     do inAddr <- expToTACs exp
        toWrite <- lookupInput name
        let input = InAddr inAddr
-       -- castArgToAddress inAddr typ (return toWrite)
+       castArgToAddress inAddr typ (return toWrite)
+       return ()
        -- return ()
-       let tac = AsnCode input $ OutAddr toWrite -- Should do a cast is the types don't match
-       addTAC tac
-  stmtToTacs (AssignStmt (DerefExp lexp typ) exp _) =
-    do writeAddr <- expToTACs . LeftExp lexp $ getLExpT lexp
+       -- let tac = AsnCode input $ OutAddr toWrite -- Should do a cast is the types don't match
+       -- addTAC tac
+  stmtToTacs (AssignStmt (DerefExp pexp typ) exp _) =
+    do writeAddr <- pexpToTACs pexp
        inAddr <- expToTACs exp
        -- Should do a cast is the types don't match
        -- castArgToAddress inAddr typ (return $ TACLocationPointsTo writeAddr)
@@ -470,14 +514,11 @@ module ThreeAddressCode where
        popEnv
     -- in CompiledStm fullFunctionTacs addedEnv bodyLocs' -- Use addedEnv instead of bodyEnv', since we don't need the two pushed frames in the rest of the global scope
 
-  defaultGlobalVarSize :: Integer
-  defaultGlobalVarSize = 4
-
   generateTACs' :: LocEnv -> Locations -> Declarations Type -> TACFile -> TACFile
   generateTACs' _ _ [] acc = acc
-  generateTACs' locEnv locs (decl@VarDeclaration{}:decls) (TACFile globalVars functions main) =
+  generateTACs' locEnv locs (decl@(VarDeclaration typ _ _):decls) (TACFile globalVars functions main) =
     let globalAddr = globals locs
-        globalVar = GlobalVarTAC globalAddr defaultGlobalVarSize Nothing
+        globalVar = GlobalVarTAC globalAddr typ Nothing
         newState = TACStateState [] locEnv locs Data.Map.empty
         (_, TACStateState _ locEnv' locs' localAddresses) = runState (declarationToTACs decl) newState
         newAcc = TACFile (globalVars `snoc` globalVar) functions main

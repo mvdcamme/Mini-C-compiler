@@ -13,6 +13,7 @@ import Environment
 -- import MASM_86_Compile
 import TASM_86_Compile
 import ThreeAddressCode
+import Traverse_AST_Array_Ref
 import Type
 import TypeChecking
 }
@@ -85,21 +86,24 @@ type:                           TInt                                            
                                 | TVoid                                                   { return $ Atom VoidType }
                                 | type TTimes                                             { do typ <- $1; return $ PointerType typ }
 
-var_declaration:                type TName TSemicolon                                     { do typ <- $1; (return $ VarDeclaration typ $2 ()) :: State AST.Location (Declaration ()) }
+var_declaration:                type TName TSemicolon                                     { do typ <- $1; return $ VarDeclaration typ $2 () }
+                                | type TName TLbrack TNumber TRbrack TSemicolon           { do typ <- $1; return $ VarDeclaration (ArrayType (number $4) typ) $2 () }
 
-var_declarations:               var_declaration var_declarations                          { do decl <- $1; decls <- $2; return (decl : decls) :: State AST.Location (Declarations ()) }
+var_declarations:               var_declaration var_declarations                          { do decl <- $1; decls <- $2; return (decl : decls) }
                                 |                                                         { return [] }
 
-fun_definition:                 type TName TLpar formal_pars TRpar block                  { do typ <- $1; decls <- $4; body <- $6; (return (FunDeclaration typ $2 decls body ())) :: State AST.Location (Declaration ()) }
+fun_definition:                 type TName TLpar formal_pars TRpar block                  { do typ <- $1; decls <- $4; body <- $6; return $ FunDeclaration typ $2 decls body () }
 
 formal_pars:                    formal_pars_tail                                          { $1 :: State AST.Location (Declarations ()) }
                                 |                                                         { (return []) :: State AST.Location (Declarations ()) }
                                 
                                 
-formal_pars_tail:               formal_par                                                { $1 >>= \(par) ->  (return [par]) :: State AST.Location (Declarations ()) }
-                                | formal_par TComma formal_pars_tail                      { do par <- $1; pars <- $3; (return (par : pars)) :: State AST.Location (Declarations ())  }
+formal_pars_tail:               formal_par                                                { $1 >>= \(par) ->  return [par] }
+                                | formal_par TComma formal_pars_tail                      { do par <- $1; pars <- $3; return (par : pars)  }
 
-formal_par:                     type TName                                                { do typ <- $1; (return $ VarDeclaration typ $2 ()) :: State AST.Location (Declaration ()) }
+formal_par:                     type TName                                                { do typ <- $1; return $ VarDeclaration typ $2 () }
+                                | type TName TLbrack TNumber TRbrack                      { do typ <- $1; return $ VarDeclaration (PointerType typ) $2 () }
+                                | type TName TLbrack TRbrack                              { do typ <- $1; return $ VarDeclaration (PointerType typ) $2 () }
 
 block:                          TLbrace var_declarations statements TRbrace               { do decls <- $2; stmts <- $3; return $ Body decls stmts () }
 
@@ -121,9 +125,11 @@ statements:                     statement statement_semicolon                   
 statement_semicolon:            TSemicolon statements                                     { $2 >>= \(stmt) -> return stmt }
                                 |                                                         { return [] }
 
+pexp:                           TName                                                     { return $ PointerExp (VariableRefExp $1 ()) (NumberExp 0 ()) () }
+
 lexp:                           TName                                                     { return $ VariableRefExp $1 () }
-                                | exp TLbrack exp TRbrack                                 { do exp1 <- $1; exp2 <- $3; return $ ArrayRefExp exp1 exp2 () }
-                                | TTimes lexp                                             { do lexp <- $2; return $ DerefExp lexp () }
+                                | lexp TLbrack exp TRbrack                                { do exp1 <- $1; exp2 <- $3; return $ ArrayRefExp exp1 exp2 () }
+                                | TTimes pexp                                             { do pexp <- $2; return $ DerefExp pexp () }
 
 exp:                            lexp                                                      { $1 >>= \(lexp) -> return $ LeftExp lexp () }
                                 | binopExp                                                { $1 >>= \(exp) -> return exp }
@@ -222,7 +228,6 @@ lexer (c:cs)
       | isAlpha c       =     lexName (c:cs)
       | isDigit c       =     lexNum (c:cs)
 lexer ('=':'=':cs)      =     TEqual : lexer cs
-lexer ('=':'!':'=':cs)  =     TNequal : lexer cs
 lexer ('=':cs)          =     TAssign : lexer cs
 lexer ('+':'+':cs)      =     TInc : lexer cs
 lexer ('-':'-':cs)      =     TDec : lexer cs
@@ -233,7 +238,7 @@ lexer ('/':cs)          =     TDivide : lexer cs
 lexer ('&':cs)          =     TAmpersand : lexer cs
 lexer (';':cs)          =     TSemicolon : lexer cs
 lexer ('!':'=':cs)      =     TNequal : lexer cs
-lexer ('!':'x':cs)      =     TNot : lexer cs
+lexer ('!':cs)          =     TNot : lexer cs
 lexer ('(':cs)          =     TLpar : lexer cs
 lexer (')':cs)          =     TRpar : lexer cs
 lexer ('{':cs)          =     TLbrace : lexer cs
@@ -271,24 +276,38 @@ fromRight :: b -> Either a b -> b
 fromRight _ (Right b) = b
 fromRight b _ = b
 
+data Config = Config { fileName' :: String, verbose' :: Bool } deriving (Show, Eq)
+defaultConfig :: Config
+defaultConfig = Config "" False
+
+handleArg :: Config -> String -> Config
+handleArg config "--verbose" = config{verbose' = True}
+handleArg config "--silent" = config{verbose' = False}
+handleArg config fileName = config{fileName' = fileName}
+
 main = do args <- getArgs
-          if (length args) /= 1
+          let config = foldl (\config arg -> handleArg config arg) defaultConfig args
+          let verbose = verbose' config
+          let fileName = fileName' config
+          if fileName == ""
              then putStrLn "Exactly one argument, filename, expected"
-             else (readFile $ head args) >>= \(fileContent) ->
+             else (readFile fileName) >>= \(fileContent) ->
                   let (decls, _) = runState (parser $ lexer fileContent) nilLocation
-                  in do print "##### DECLARATIONS #####"
-                        putStrLn $ concat (intersperse "\n" $ map show decls)
-                        print "##### TYPES #####"
-                        let typeChecked = TypeChecking.typeCheckDeclarations decls
-                        either (\_ -> exitWith $ ExitFailure 1) (\types -> print $ types) typeChecked
+                      decls' = transformDeclarations decls
+                  in do when verbose $ print "##### DECLARATIONS #####"
+                        when verbose . putStrLn $ concat (intersperse "\n" $ map show decls')
+                        -- return $ walkDeclarations2 (map (\decl -> changeDeclarationT decl (\_ -> ASTTransformerChanger)) decls)
+                        when verbose $ print "##### TYPES #####"
+                        let typeChecked = TypeChecking.typeCheckDeclarations decls'
+                        either (\_ -> exitWith $ ExitFailure 1) (\types -> when verbose . print $ types) typeChecked
                         let tDecls = fromRight [] $ fmap snd typeChecked
-                        print "##### TACS #####"
+                        when verbose $ print "##### TACS #####"
                         let tacFile = generateTACs tDecls
-                        print tacFile
+                        when verbose $ print tacFile
                         -- putStrLn $ concat (intersperse "\n" . map show $ generateTACs tDecls)
-                        print "##### Assembly #####"
+                        when verbose $ print "##### Assembly #####"
                         let compiled = compile tacFile
-                        putStrLn compiled
+                        when verbose $ putStrLn compiled
                         writeFile "output/output.asm" compiled
                         exitWith ExitSuccess
   }

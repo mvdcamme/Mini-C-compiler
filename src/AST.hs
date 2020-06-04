@@ -22,8 +22,8 @@ module AST where
                                     | ForStmt (Statement t) Marker (Expression t) Marker (Statement t) Marker (Body t) Marker t
                                     | IfElseStmt (Expression t) (Body t) Marker (Body t) Marker t
                                     | IfStmt (Expression t) (Body t) Marker t
-                                    | Return1Stmt (Expression t) t                       -- Returns a value
                                     | Return0Stmt t                                      -- Does not return a value
+                                    | Return1Stmt (Expression t) t                       -- Returns a value
                                     | ReadStmt (LeftExpression t) t
                                     | WriteStmt (LeftExpression t) t
                                     | WhileStmt Marker (Expression t) (Body t) Marker t
@@ -35,8 +35,11 @@ module AST where
                                     deriving (Show, Eq)
 
     data LeftExpression t           = VariableRefExp Name t
-                                    | ArrayRefExp (Expression t) (Expression t) t
-                                    | DerefExp (LeftExpression t) t
+                                    | ArrayRefExp (LeftExpression t) (Expression t) t
+                                    | DerefExp (PointerExpression t) t
+                                    deriving (Show, Eq)
+
+    data PointerExpression t        = PointerExp (LeftExpression t) (Expression t) t             -- Pointer arithmetic: (lexp + exp), e.g., p + 10
                                     deriving (Show, Eq)
 
     data Expression t               = LeftExp (LeftExpression t) t
@@ -44,11 +47,29 @@ module AST where
                                     | UnaryExp UnOperator (Expression t) t
                                     | UnaryModifyingExp UnModifyingOperator (LeftExpression t) t
                                     | FunctionAppExp Name (Expressions t) t
+                                    | FunctionAppWithTypedExp Name [(Expression t, Type)] t
                                     | LengthExp (Expression t) t
                                     | AddressOf (LeftExpression t) t
                                     | NumberExp Integer t
                                     | QCharExp Char t
                                     deriving (Show, Eq)
+
+    getLExpT :: (LeftExpression t) -> t
+    getLExpT (VariableRefExp _ t) = t
+    getLExpT (ArrayRefExp _ _ t) = t
+    getLExpT (DerefExp _ t) = t
+
+    getExpT :: Expression t -> t
+    getExpT (LeftExp _ t) = t
+    getExpT (BinaryExp _ _ _ t) = t
+    getExpT (UnaryExp _ _ t) = t
+    getExpT (UnaryModifyingExp _ _ t) = t
+    getExpT (FunctionAppExp _ _ t) = t
+    getExpT (FunctionAppWithTypedExp _ _ t) = t
+    getExpT (LengthExp _ t) = t
+    getExpT (AddressOf _ t) = t
+    getExpT (NumberExp _ t) = t
+    getExpT (QCharExp _ t) = t
 
     type Expressions t              = [Expression t]
 
@@ -88,9 +109,4 @@ module AST where
     nextLoc :: WithLocation ()
     nextLoc = do loc <- get
                  put $ loc + 1
-
-    getLExpT :: (LeftExpression t) -> t
-    getLExpT (VariableRefExp _ t) = t
-    getLExpT (ArrayRefExp _ _ t) = t
-    getLExpT (DerefExp _ t) = t
 
