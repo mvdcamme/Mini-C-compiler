@@ -16,13 +16,14 @@ elif [[ "$OSTYPE" == "darwin"* ]]; then
 	COLOR_ESCAPE_CHAR=x1B
 fi
 
-for application in test test3 test4
+clear && printf '\e[3J'
+
+for application in test1 test2 test3 test4
 do
 	INPUT="$FIXTURES/$application""_in.c"
 	OUTPUT="$EXERCISE/OUT.TXT"
 	EXPECTED="$FIXTURES/$application""_out.txt"
 
-	clear && printf '\e[3J'
 	echo "Testing application $INPUT"
 	rm -f $OUTPUT
 	sh ./run.sh $INPUT --silent

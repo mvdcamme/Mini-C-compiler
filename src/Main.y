@@ -298,9 +298,10 @@ main = do args <- getArgs
                         when verbose . putStrLn $ concat (intersperse "\n" $ map show decls')
                         -- return $ walkDeclarations2 (map (\decl -> changeDeclarationT decl (\_ -> ASTTransformerChanger)) decls)
                         when verbose $ print "##### TYPES #####"
-                        let typeChecked = TypeChecking.typeCheckDeclarations decls'
-                        either (\_ -> exitWith $ ExitFailure 1) (\types -> when verbose . print $ types) typeChecked
-                        let tDecls = fromRight [] $ fmap snd typeChecked
+                        let typeChecked = TypeChecking.typeCheck decls'
+                        when verbose . print $ typeChecked
+                        -- either (\_ -> exitWith $ ExitFailure 1) (\types -> when verbose . print $ types) typeChecked
+                        let tDecls = typeChecked
                         when verbose $ print "##### TACS #####"
                         let tacFile = generateTACs tDecls
                         when verbose $ print tacFile

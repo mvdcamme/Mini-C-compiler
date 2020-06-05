@@ -450,11 +450,10 @@ module ThreeAddressCode where
     do inAddr <- expToTACs exp
        toWrite <- lookupInput name
        let input = InAddr inAddr
-       castArgToAddress inAddr typ (return toWrite)
+       castedToWrite <- castArgToAddress inAddr typ (return toWrite)
+       let tac = AsnCode (InAddr castedToWrite) $ OutAddr toWrite
+       addTAC tac
        return ()
-       -- return ()
-       -- let tac = AsnCode input $ OutAddr toWrite -- Should do a cast is the types don't match
-       -- addTAC tac
   stmtToTacs (AssignStmt (DerefExp pexp typ) exp _) =
     do writeAddr <- pexpToTACs pexp
        inAddr <- expToTACs exp
@@ -537,7 +536,7 @@ module ThreeAddressCode where
 
   transformTACFile :: TACFile -> TACFile
   transformTACFile (TACFile decls functions (Just functionTAC)) =
-    let replaceRet = \tac -> case tac of Rt0Code -> ExtCode; other -> other
+    let replaceRet = \tac -> case tac of Rt0Code -> ExtCode; Rt1Code _ -> ExtCode; other -> other
         replacedTACs = map replaceRet $ fTACBody functionTAC
         newTACFile = functionTAC{fTACBody = replacedTACs}
     in TACFile decls functions $ Just newTACFile

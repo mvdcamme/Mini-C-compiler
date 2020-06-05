@@ -71,6 +71,18 @@ module AST where
     getExpT (NumberExp _ t) = t
     getExpT (QCharExp _ t) = t
 
+    setExpT :: Expression t -> t -> Expression t
+    setExpT (LeftExp lexp t) t'                           = LeftExp lexp t'
+    setExpT (BinaryExp op left right t) t'                = BinaryExp op left right t'
+    setExpT (UnaryExp op arg t) t'                        = UnaryExp op arg t'
+    setExpT (UnaryModifyingExp op arg t) t'               = UnaryModifyingExp op arg t'
+    setExpT (FunctionAppExp name args t) t'               = FunctionAppExp name args t'
+    setExpT (FunctionAppWithTypedExp name args t) t'      = FunctionAppWithTypedExp name args t'
+    setExpT (LengthExp exp t) t'                          = LengthExp exp t'
+    setExpT (AddressOf exp t) t'                          = AddressOf exp t'
+    setExpT (NumberExp n t) t'                            = NumberExp n t'
+    setExpT (QCharExp c t) t'                             = QCharExp c t'
+
     type Expressions t              = [Expression t]
 
     data BinOperator =              PlusOp

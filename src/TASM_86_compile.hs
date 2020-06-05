@@ -224,7 +224,8 @@ module TASM_86_Compile where
     do arg1 <- inputToArg in1
        let functionExitOps = [MovOp sp bp, PopOp bp]
        let size = typeToSize $ getType in1
-       fromOps $ makeMovOp retReg arg1 size
+       fromOps $ clearArg retReg
+       fromOps $ makeMovOp (retRegOfSize size) arg1 size
        fromOps functionExitOps
        fromOps RetOp
   -- Assignments
@@ -304,7 +305,9 @@ module TASM_86_Compile where
   calculateFrameSize :: LocalAddresses -> Integer
   calculateFrameSize localAddresses =
     let sizes = Data.Map.fold (\typ acc -> typeToInteger typ : acc) [] localAddresses
-    in foldl (+) 0 sizes
+        ebpSize = dwordSize
+        defaultFrameContents = [ebpSize]
+    in (foldl (+) 0 sizes) + (foldl (+) 0 defaultFrameContents)
 
   compileFunTAC :: FunctionTAC -> TASM_86_Compiled ()
   compileFunTAC (FunctionTAC name pars locals exps tacs localAddresses) =

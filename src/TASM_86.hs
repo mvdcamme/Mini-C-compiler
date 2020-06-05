@@ -180,8 +180,14 @@ module TASM_86 where
   regToSize DH  = SizeByte
   regToSize DL  = SizeByte
 
+  retReg' :: Register
+  retReg' = EAX
+
   retReg :: Arg -- The register where a function's return value will be placed in
-  retReg = eax
+  retReg = Register retReg'
+
+  retRegOfSize :: SizeEnum -> Arg
+  retRegOfSize size = Register $ getRegOfSize retReg' size
 
   typeToSize :: Type -> SizeEnum
   typeToSize (Atom VoidType) = SizeByte       -- TODO: Shouldn't happen
