@@ -18,28 +18,29 @@ fi
 
 clear && printf '\e[3J'
 
-for application in test1 test2 test3 test4
+for INPUT in $FIXTURES/test*_in.c
 do
-	INPUT="$FIXTURES/$application""_in.c"
+	echo $INPUT
+	APPLICATION_NAME=${INPUT%"_in.c"}
 	OUTPUT="$EXERCISE/OUT.TXT"
-	EXPECTED="$FIXTURES/$application""_out.txt"
+	EXPECTED="$APPLICATION_NAME""_out.txt"
 
 	echo "Testing application $INPUT"
 	rm -f $OUTPUT
-	sh ./run.sh $INPUT --silent
+	sh ./run.sh $INPUT $OUTPUT --silent
 
 	# /Applications/dosbox.app/Contents/MacOS/DOSBox -noautoexec -c "$C_DISK" -c "$Y_MOUNT" -c "$PATHS" -c "$WATCOM" -c "C:" -c "cd EXERCISE" -c "make" -c "test.exe"
 	/Applications/dosbox.app/Contents/MacOS/DOSBox -noautoexec -c "$MOUNT_C_DISK" -c "$Y_MOUNT" -c "$PATHS" -c "$WATCOM" -c "C:" -c "cd EXERCISE" -c "make" -c "test.exe >> out.txt" &
 	DOSBOX=$!
-	sleep 7
+	sleep 15
 	kill -9 $DOSBOX
 	diff $OUTPUT $EXPECTED -w
 	RESULT=$?
 
 	if [[ $RESULT -eq 0 ]]; then
-			echo -e "\\$COLOR_ESCAPE_CHAR[42mTest \"$application\" passed\\$COLOR_ESCAPE_CHAR[0m"
+			echo -e "\\$COLOR_ESCAPE_CHAR[42mTest \"$APPLICATION_NAME\" passed\\$COLOR_ESCAPE_CHAR[0m"
 		else
-			echo -e "\\$COLOR_ESCAPE_CHAR[101mTest \"$application\" failed\\$COLOR_ESCAPE_CHAR[0m"
+			echo -e "\\$COLOR_ESCAPE_CHAR[101mTest \"$APPLICATION_NAME\" failed\\$COLOR_ESCAPE_CHAR[0m"
 			break
 		fi
 done

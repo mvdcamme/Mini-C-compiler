@@ -9,11 +9,14 @@ fi
 
 COMPILER=output/Main
 INPUT_FILE=${1:-./src/test.c}
-KEEP_SILENT=${2:-"--verbose"}
-OUTPUT_FILE=output/output.asm
+OUTPUT_FILE=${2:-.output/output.asm}
+KEEP_SILENT=${3:-"--verbose"}
 TO=./ASMBox/c_disk/EXERCISE
 
-./$COMPILER $INPUT_FILE $KEEP_SILENT
+echo INPUT_FILE $INPUT_FILE
+echo OUTPUT_FILE $OUTPUT_FILE
+
+./$COMPILER $INPUT_FILE $OUTPUT_FILE $KEEP_SILENT
 EXIT_CODE=$?
 if [[ $EXIT_CODE -eq 0 ]]; then
 	rm -f $TO/test.asm $TO/TEST.EXE $TO/TEST.OBJ
