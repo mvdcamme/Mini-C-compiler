@@ -19,6 +19,8 @@ int f(int a, int b) {
 }
 
 int main(int argc, char argv) {
-	print(f(1, 2));
+	int result;
+	result = f(1, 2);
+	print(result);
 	return 0;
 }
