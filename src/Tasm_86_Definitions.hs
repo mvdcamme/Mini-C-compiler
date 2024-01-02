@@ -25,6 +25,9 @@ module TASM_86_Definitions where
                                                        , tasmCurrentPar :: Address
                                                        , tasmLocalsMap :: Map Address Address
                                                        , tasmParsMap :: Map Address Address
+                                                       , tasmInputToArgs :: Map Input Arg
+                                                       , tasmOutputToArgs :: Map Output Arg
+                                                       -- , tasmMemsMap :: Map Address Address -- used for debugging
                                                        } deriving (Show, Eq)
 
   -- data TASM_86_Compiled t   = TASM_86_Compiled { runCompiled :: (TASM_86_Compiled_State -> (t, TASM_86_Compiled_State)) }
@@ -38,7 +41,7 @@ module TASM_86_Definitions where
     let parOffset = 2 * dwordSize
         localOffset = (-1) * dwordSize
         emptyMap = Data.Map.empty
-    in (runState s) $ TASM_86_Compiled_State 0 [] localOffset parOffset emptyMap emptyMap
+    in (runState s) $ TASM_86_Compiled_State 0 [] localOffset parOffset emptyMap emptyMap emptyMap emptyMap
   -- newCompiled comp =
   --   let f = runCompiled comp
   --       initial = (0, [])
@@ -57,9 +60,7 @@ module TASM_86_Definitions where
   locToMemoryRef' map k def state' =
     case Data.Map.lookup k map of
       Just val -> return (val, map)
-      Nothing  -> do -- put (trace ("Put new state: tasmCurrentLocal = " ++ (show (tasmCurrentLocal state'))) state')
-                     put state'
-                     -- trace ("Created a new memory ref: ") $ return (def, insert k def map)
+      Nothing  -> do put state'
                      return (def, insert k def map)
 
   locToMemoryRef :: TACLocation -> TASM_86_Compiled MemoryReference
@@ -73,7 +74,8 @@ module TASM_86_Definitions where
        (ref, mp') <- locToMemoryRef' mp address currentLocal (state { tasmCurrentLocal = (tasmCurrentLocal state) - typeSizeInt }) -- trace "Adding new local" ((tasmCurrentLocal state) + typeSize) })
        state' <- get
        put state' { tasmLocalsMap = mp' } -- trace ("Local: mp' = " ++ (show mp')) mp' }
-       return $ Indirect ref EBP typeSize
+       return $ Indirect (trace ("locToMemoryRef of Local " ++ show address ++ " " ++ show typ ++ " -> Indirect " ++ show ref ++ " EBP\ntasmCurrentLocal is now " ++ show (tasmCurrentLocal state'))
+                                ref) EBP typeSize
   locToMemoryRef (TAC.Parameter address typ) =
     do state <- get
        let currentPar = tasmCurrentPar state

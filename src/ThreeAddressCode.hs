@@ -23,6 +23,26 @@ module ThreeAddressCode where
                               | TACLocationPointsToIndexed TACLocation TACLocation
                               deriving (Show, Eq)
 
+  instance Ord AtomicValue where -- arbitrarily, CharValue < IntValue
+    compare (CharValue char1) (CharValue char2) = compare char1 char2
+    compare (IntValue int1) (IntValue int2) = compare int1 int2
+
+  instance Ord TACLocation where
+    compare (Global adr1 _) (Global adr2 _) = compare adr1 adr2
+    compare (Global _ _) _ = LT
+    compare (Local adr1 _) (Local adr2 _) = compare adr1 adr2
+    compare (Local _ _) _ = LT
+    compare (Parameter adr1 _) (Parameter adr2 _) = compare adr1 adr2
+    compare (Parameter _ _) _ = LT
+    compare (TACLocationPointsTo adr1) (TACLocationPointsTo adr2) = compare adr1 adr2
+    compare (TACLocationPointsTo _) _ = LT
+    compare (TACLocationPointsToIndexed x1 y1) (TACLocationPointsToIndexed x2 y2) =
+      let firstComparison = compare x1 x2
+      in if firstComparison == EQ
+         then compare y1 y2
+         else firstComparison
+
+
   data Locations            = Locations { globals :: Address
                                         , pars :: Address
                                         , locals :: Address
@@ -36,6 +56,9 @@ module ThreeAddressCode where
                               deriving (Show, Eq)
   data Output               = OutAddr TACLocation
                               deriving (Show, Eq)
+
+  instance Ord Output where
+    compare (OutAddr loc1) (OutAddr loc2) = compare loc1 loc2
 
   type FunctionName         = String
   type VarName              = String
@@ -107,7 +130,7 @@ module ThreeAddressCode where
                                           , fTACNrOfExps :: Integer
                                           , fTACBody :: TACs
                                           , fTACLocalAddresses :: LocalAddresses
-                                        } deriving (Show, Eq)
+                                        } deriving (Eq)
   data GlobalVarTAC         = GlobalVarTAC { gvTACAddress :: Address
                                            , gvType :: Type
                                            , gvInitValue :: Maybe Integer
@@ -119,6 +142,18 @@ module ThreeAddressCode where
                                       , functionDefinitions :: FunctionTACs
                                       , mainFunctionDefinition :: Maybe FunctionTAC
                                       } deriving (Eq)
+
+  instance Show FunctionTAC where
+    show (FunctionTAC name nrOfPars nrOfLocals nrOfExps body localAddresses) =
+      let preamble =
+           "FunctionTAC " ++ show name ++ " {\n\t" ++
+           "nrOfPars: " ++ show nrOfPars ++ "\n\t" ++
+           "nrOfLocals: " ++ show nrOfLocals ++ "\n\t" ++
+           "nrOfExps: " ++ show nrOfExps ++ "\n\t" ++
+           "body : [\n\t\t"
+          stringifiedBody = concat . intersperse "\n\t\t" $ map show body
+          postamble = "]\n\t" ++ "localAddresses: " ++ show localAddresses ++ "\n" ++ "}"
+      in preamble ++ stringifiedBody ++ postamble
 
   instance Show TACFile where
     show (TACFile globals functions main) =
@@ -143,6 +178,12 @@ module ThreeAddressCode where
 
   instance HasType Output where
     getType (OutAddr loc) = getType loc
+
+  instance Ord Input where -- arbitrarily, Literal < InAddr
+    compare (Literal lit1) (Literal lit2) = compare lit1 lit2
+    compare (Literal _) (InAddr _) = LT
+    compare (InAddr tac1) (InAddr tac2) = compare tac1 tac2
+    compare (InAddr _) (Literal _) = GT
 
   emptyTACFile :: TACFile
   emptyTACFile = TACFile [] [] Nothing
@@ -338,6 +379,19 @@ module ThreeAddressCode where
        addTAC $ ParCode (InAddr expAddr) (InAddr lexpAddr) $ OutAddr outAddr
        return outAddr
 
+  -- assignOpStmtToTACS :: Statement Type -> CompiledStm
+  -- assignOpStmtToTACS (AssignOpStmt op (VariableRefExp name typ) exp _) =
+  --   let convertedOp = assignableBinOpToBinOp op
+  --       lexp = LeftExp (VariableRefExp name typ) typ
+  --       completeRExp = BinaryExp convertedOp lexp exp typ
+  --   in do inAddr <- expToTACs completeRExp
+  --         toWrite <- lookupInput name
+  --         let input = InAddr inAddr
+  --         castedToWrite <- castArgToAddress inAddr typ (return toWrite)
+  --         let tac = AsnCode (InAddr castedToWrite) $ OutAddr toWrite
+  --         addTAC tac
+  --         return ()
+
   expToTACs :: Expression Type -> CompiledExp
   expToTACs atomic@(NumberExp integer (Atom typ)) = atomicToTACs (IntValue integer) typ
   expToTACs atomic@(QCharExp char (Atom typ)) = atomicToTACs (CharValue char) typ
@@ -462,6 +516,14 @@ module ThreeAddressCode where
        -- return ()
        let asnTac = AsnCode (InAddr inAddr) . OutAddr $ TACLocationPointsTo writeAddr
        addTAC asnTac
+  -- stmtToTacs (AssignOpStmt op (VariableRefExp name typ) exp _) =
+  --   do inAddr <- expToTACs exp
+  --      toWrite <- lookupInput name
+  --      let input = InAddr inAddr
+  --      castedToWrite <- castArgToAddress inAddr typ (return toWrite)
+  --      let tac = AsnCode (InAddr castedToWrite) $ OutAddr toWrite
+  --      addTAC tac
+  --      return ()
   stmtToTacs (ExpStmt exp _) =
     do expToTACs exp
        return ()

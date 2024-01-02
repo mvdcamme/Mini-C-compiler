@@ -11,7 +11,9 @@ import System.Exit
 import AST
 import Environment
 -- import MASM_86_Compile
-import TASM_86_Compile
+-- import TASM_86_Compile
+import NASM_86_Compile
+import Remove_Redundant_TACS
 import ThreeAddressCode
 import Traverse_AST_Array_Ref
 import Type
@@ -54,6 +56,11 @@ import TypeChecking
       TNequal                   { TNequal        }
       TLbrace                   { TLbrace        }
       TAssign                   { TAssign        }
+      TAssignPlus               { TAssignPlus    }
+      TAssignMinus              { TAssignMinus   }
+      TAssignTimes              { TAssignTimes   }
+      TAssignDiv                { TAssignDiv     }
+      TAssignModulo             { TAssignModulo  }
       TMinus                    { TMinus         }
       TChar                     { TChar          }
       TLess                     { TLess          }
@@ -64,7 +71,7 @@ import TypeChecking
       TVoid                     { TVoid          }
       TEnd                      { TEnd           }
 
-%left TAssign
+%left TAssign TAssignPlus TAssignMinus TAssignTimes TAssignDiv TAssignModulo
 %left TEqual TNequal
 %left TGreater TGreaterEqual TLess TLessEqual
 %left TPlus TMinus
@@ -88,6 +95,7 @@ type:                           TInt                                            
 
 var_declaration:                type TName TSemicolon                                     { do typ <- $1; return $ VarDeclaration typ $2 () }
                                 | type TName TLbrack TNumber TRbrack TSemicolon           { do typ <- $1; return $ VarDeclaration (ArrayType (number $4) typ) $2 () }
+                                | type TName TEqual exp                                   { do typ <- $1; exp <- $4; return $ VarDefinition typ $2 exp () }
 
 var_declarations:               var_declaration var_declarations                          { do decl <- $1; decls <- $2; return (decl : decls) }
                                 |                                                         { return [] }
@@ -108,6 +116,11 @@ formal_par:                     type TName                                      
 block:                          TLbrace var_declarations statements TRbrace               { do decls <- $2; stmts <- $3; return $ Body decls stmts () }
 
 statement:                      lexp TAssign exp                                          { do lexp <- $1; exp <- $3; return $ AssignStmt lexp exp () }
+                                | lexp TAssignPlus exp                                    { do lexp <- $1; exp <- $3; return $ AssignStmt lexp (BinaryExp PlusOp (LeftExp lexp ()) exp ()) () }
+                                | lexp TAssignMinus exp                                   { do lexp <- $1; exp <- $3; return $ AssignStmt lexp (BinaryExp MinusOp (LeftExp lexp ()) exp ()) () }
+                                | lexp TAssignTimes exp                                   { do lexp <- $1; exp <- $3; return $ AssignStmt lexp (BinaryExp TimesOp (LeftExp lexp ()) exp ()) () }
+                                | lexp TAssignDiv exp                                     { do lexp <- $1; exp <- $3; return $ AssignStmt lexp (BinaryExp DivideOp (LeftExp lexp ()) exp ()) () }
+                                | lexp TAssignModulo exp                                  { do lexp <- $1; exp <- $3; return $ AssignStmt lexp (BinaryExp ModuloOp (LeftExp lexp ()) exp ()) () }
                                 | TReturn                                                 { return $ Return0Stmt () }
                                 | TReturn exp                                             { $2 >>= \(exp) -> return $ Return1Stmt exp () }
                                 | TRead lexp                                              { $2 >>= \(lexp) -> return $ ReadStmt lexp () }
@@ -209,6 +222,11 @@ data Token
      | TNequal
      | TLbrace
      | TAssign
+     | TAssignPlus
+     | TAssignMinus
+     | TAssignTimes
+     | TAssignDiv
+     | TAssignModulo
      | TMinus
      | TInt
      | TChar
@@ -228,9 +246,14 @@ lexer (c:cs)
       | isAlpha c       =     lexName (c:cs)
       | isDigit c       =     lexNum (c:cs)
 lexer ('=':'=':cs)      =     TEqual : lexer cs
-lexer ('=':cs)          =     TAssign : lexer cs
+lexer ('+':'=':cs)      =     TAssignPlus : lexer cs
+lexer ('-':'=':cs)      =     TAssignMinus : lexer cs
+lexer ('*':'=':cs)      =     TAssignTimes : lexer cs
+lexer ('/':'=':cs)      =     TAssignDiv : lexer cs
+lexer ('%':'=':cs)      =     TAssignModulo : lexer cs
 lexer ('+':'+':cs)      =     TInc : lexer cs
 lexer ('-':'-':cs)      =     TDec : lexer cs
+lexer ('=':cs)          =     TAssign : lexer cs
 lexer ('+':cs)          =     TPlus : lexer cs
 lexer ('-':cs)          =     TMinus : lexer cs
 lexer ('*':cs)          =     TTimes : lexer cs
@@ -276,39 +299,44 @@ fromRight :: b -> Either a b -> b
 fromRight _ (Right b) = b
 fromRight b _ = b
 
-data Config = Config { fileName' :: String, verbose' :: Bool } deriving (Show, Eq)
+data Config = Config { fileName' :: String, verbose' :: Bool, outputFileName' :: String } deriving (Show, Eq)
 defaultConfig :: Config
-defaultConfig = Config "" False
+defaultConfig = Config "" False ""
 
-handleArg :: Config -> String -> Config
-handleArg config "--verbose" = config{verbose' = True}
-handleArg config "--silent" = config{verbose' = False}
-handleArg config fileName = config{fileName' = fileName}
+handleArg :: Config -> (String, Integer) -> Config
+handleArg config ("--verbose", _) = config {verbose' = True}
+handleArg config ("--silent", _) = config {verbose' = False}
+handleArg config (fileName, 0) = config {fileName' = fileName}
+handleArg config (fileName, 1) = config {outputFileName' = fileName}
 
 main = do args <- getArgs
-          let config = foldl (\config arg -> handleArg config arg) defaultConfig args
+          let config = foldl (\config arg -> handleArg config arg) defaultConfig $ zip args [0..]
           let verbose = verbose' config
           let fileName = fileName' config
-          if fileName == ""
-             then putStrLn "Exactly one argument, filename, expected"
+          let outputFileName = outputFileName' config
+          if (fileName == "") || (outputFileName == "")
+             then putStrLn "Two arguments, input file name and output file name, expected"
              else (readFile fileName) >>= \(fileContent) ->
                   let (decls, _) = runState (parser $ lexer fileContent) nilLocation
                       decls' = transformDeclarations decls
-                  in do when verbose $ print "##### DECLARATIONS #####"
+                  in do when verbose $ print "##### Declarations #####"
                         when verbose . putStrLn $ concat (intersperse "\n" $ map show decls')
                         -- return $ walkDeclarations2 (map (\decl -> changeDeclarationT decl (\_ -> ASTTransformerChanger)) decls)
-                        when verbose $ print "##### TYPES #####"
+                        when verbose $ print "##### Types #####"
                         let typeChecked = TypeChecking.typeCheck decls'
                         when verbose . print $ typeChecked
                         -- either (\_ -> exitWith $ ExitFailure 1) (\types -> when verbose . print $ types) typeChecked
                         let tDecls = typeChecked
-                        when verbose $ print "##### TACS #####"
+                        when verbose $ print "##### TACs #####"
                         let tacFile = generateTACs tDecls
                         when verbose $ print tacFile
                         -- putStrLn $ concat (intersperse "\n" . map show $ generateTACs tDecls)
+                        when verbose $ print "##### Optimised TACs #####"
+                        let optimisedTacFile = optimiseTACFile tacFile
+                        when verbose $ print optimisedTacFile
                         when verbose $ print "##### Assembly #####"
-                        let compiled = compile tacFile
+                        let compiled = compile optimisedTacFile
                         when verbose $ putStrLn compiled
-                        writeFile "output/output.asm" compiled
+                        writeFile outputFileName compiled
                         exitWith ExitSuccess
   }

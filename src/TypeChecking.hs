@@ -247,6 +247,9 @@ module TypeChecking where
                               PointerType pointedTo -> return (void, AssignStmt (DerefExp tPexp pexpType) tExp void)
                               ArrayType _ pointedTo -> return (void, AssignStmt (DerefExp tPexp pexpType) tExp void)
                               _ -> error $ printf "Expression %s is not a pointer type" (show tPexp)
+  -- typeCheckStatement (AssignOpStmt op lexp exp t) = 
+  --   let newRExp = BinaryExp (assignableBinOpToBinOp op) (LeftExp lexp t) exp t
+  --   in typeCheckStatement $ AssignStmt lexp newRExp t
   typeCheckStatement (BlockStmt block _) =
     do (blockType, tBlock) <- typeCheckBlock block
        return (void, BlockStmt tBlock void)

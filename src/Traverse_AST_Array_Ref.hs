@@ -87,6 +87,10 @@ module Traverse_AST_Array_Ref where
   walkStatement transformer (AssignStmt lexp exp t) =
     transformStatement transformer $
       AssignStmt (walkLExp transformer lexp) (walkExp transformer exp) t
+  -- walkStatement transformer (AssignOpStmt op lexp exp t) =
+  --     let newRExp = BinaryExp (assignableBinOpToBinOp op) (LeftExp lexp t) exp t
+  --     in transformStatement transformer $
+  --          AssignStmt (walkLExp transformer lexp) (walkExp transformer newRExp) t
   walkStatement transformer (BlockStmt body t) =
     transformStatement transformer $
       BlockStmt (walkBody transformer body) t

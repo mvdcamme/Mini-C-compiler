@@ -11,12 +11,14 @@ module AST where
     --                                 | FunDefinition Type Name Declarations Body
 
     data Declaration t =            VarDeclaration Type Name t
+                                    | VarDefinition Type Name (Expression t) t
                                     | FunDeclaration Type Name (Declarations t) (Body t) t
                                     deriving (Show, Eq)
 
     type Declarations t =           [Declaration t]
 
     data Statement t =              AssignStmt (LeftExpression t) (Expression t) t
+                                    | AssignOpStmt AssignableBinOperator (LeftExpression t) (Expression t) t
                                     | BlockStmt (Body t) t
                                     | ExpStmt (Expression t) t
                                     | ForStmt (Statement t) Marker (Expression t) Marker (Statement t) Marker (Body t) Marker t
@@ -95,7 +97,22 @@ module AST where
                                     | GreaterEqualOp
                                     | LessOp
                                     | LessEqualOp
+                                    | ModuloOp
                                     deriving (Show, Eq)
+
+    data AssignableBinOperator =    PlusAssignOp
+                                    | MinusAssignOp
+                                    | TimesAssignOp
+                                    | DivideAssignOp
+                                    | ModuloAssignOp
+                                    deriving (Show, Eq)
+
+    assignableBinOpToBinOp :: AssignableBinOperator -> BinOperator
+    assignableBinOpToBinOp PlusAssignOp   = PlusOp
+    assignableBinOpToBinOp MinusAssignOp  = MinusOp
+    assignableBinOpToBinOp TimesAssignOp  = TimesOp
+    assignableBinOpToBinOp DivideAssignOp = DivideOp
+    assignableBinOpToBinOp ModuloAssignOp = ModuloOp
 
     data UnOperator =               MinusUnOp
                                     | NotOp
