@@ -1,11 +1,11 @@
-module NASM_86_Definitions where
+module CodeGeneration.NASM_86_Definitions where
 
   import Control.Monad.State
   import Data.Map hiding (map)
   import Debug.Trace
 
   import ThreeAddressCode as TAC
-  import NASM_86
+  import CodeGeneration.NASM_86 as NASM
 
   class ToOperation t where
     toOperation :: t -> Operation
@@ -64,7 +64,7 @@ module NASM_86_Definitions where
                      return (def, insert k def map)
 
   locToMemoryRef :: TACLocation -> NASM_86_Compiled MemoryReference
-  locToMemoryRef (TAC.Global address typ) = return . NASM_86.Global address $ typeToSize typ
+  locToMemoryRef (TAC.Global address typ) = return . NASM.Global address $ typeToSize typ
   locToMemoryRef (TAC.Local address typ) =
     do state <- get
        let currentLocal = nasmCurrentLocal state
@@ -85,7 +85,12 @@ module NASM_86_Definitions where
        (ref, mp') <- locToMemoryRef' mp address currentPar (state { nasmCurrentPar = (nasmCurrentPar state) + typeSizeInt })-- trace "Adding new parameter" ((nasmCurrentPar state) + typeSize) })
        state' <- get
        put state' { nasmParsMap = mp' } -- trace ("Parameter: mp' = " ++ (show mp')) mp' }
-       return $ NASM_86.Parameter ref typeSize
+       return $ NASM.Parameter ref typeSize
+--  locToMemoryRef (TAC.TACLocationPointsTo address) =
+--    do ref <- locToMemoryRef address
+--       case ref of
+--         (Indirect offset reg size) -> do fromOps [AddOp eax $ Register reg, AddOp eax $ NASM.Literal offset]
+--                                          return eax
 
   -- class GeneratesNASM_86_Compiled a where
   --   toNASM_86_Compiled :: a -> NASM_86_Compiled ()

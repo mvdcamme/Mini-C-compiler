@@ -1,4 +1,4 @@
-module TASM_86_Compile where
+module CodeGeneration.TASM_86_Compile where
 
   import Control.Monad
   import Control.Monad.State
@@ -9,9 +9,9 @@ module TASM_86_Compile where
   import Debug.Trace
 
   import AST
-  import TASM_86
-  import TASM_86_Natives
-  import TASM_86_Definitions
+  import CodeGeneration.TASM_86
+  import CodeGeneration.TASM_86_Natives
+  import CodeGeneration.TASM_86_Definitions
   import ThreeAddressCode as TAC
   import Type
 

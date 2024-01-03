@@ -1,6 +1,6 @@
-module TASM_86_Natives where
+module CodeGeneration.TASM_86_Natives where
 
-  import TASM_86
+  import CodeGeneration.TASM_86
 
   filePrelude :: Operations
   filePrelude = 

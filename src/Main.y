@@ -10,9 +10,9 @@ import System.Exit
 
 import AST
 import Environment
--- import MASM_86_Compile
--- import TASM_86_Compile
-import NASM_86_Compile
+-- import CodeGeneration.MASM_86_Compile
+-- import CodeGeneration.TASM_86_Compile
+import CodeGeneration.NASM_86_Compile
 import Remove_Redundant_TACS
 import ThreeAddressCode
 import Traverse_AST_Array_Ref

@@ -1,4 +1,4 @@
-module NASM_86 where
+module CodeGeneration.NASM_86 where
 
   import Data.Char
   import Data.List

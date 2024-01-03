@@ -1,6 +1,6 @@
-module NASM_86_Natives where
+module CodeGeneration.NASM_86_Natives where
 
-  import NASM_86
+  import CodeGeneration.NASM_86
 
   dataSegment :: Operations
   dataSegment = -- Not read-only

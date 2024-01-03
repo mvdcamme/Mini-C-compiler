@@ -1,4 +1,4 @@
-module MASM_86 where
+module CodeGeneration.MASM_86 where
 
   import Data.Char
   import Data.List

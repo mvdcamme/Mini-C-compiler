@@ -1,6 +1,6 @@
-module MASM_86_Natives where
+module CodeGeneration.MASM_86_Natives where
 
-  import MASM_86
+  import CodeGeneration.MASM_86
 
   filePrelude :: Operations
   filePrelude =

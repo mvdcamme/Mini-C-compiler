@@ -1,12 +1,12 @@
-module MASM_86_Compile where
+module CodeGeneration.MASM_86_Compile where
 
   import Data.Char
   import Data.List
   import Data.List.Extra
 
   import AST
-  import MASM_86
-  import MASM_86_Natives
+  import CodeGeneration.MASM_86
+  import CodeGeneration.MASM_86_Natives
   import ThreeAddressCode
 
   addressToLocalOffset :: Address -> Integer

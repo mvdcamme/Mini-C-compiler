@@ -1,4 +1,4 @@
-module NASM_86_Compile where
+module CodeGeneration.NASM_86_Compile where
 
   import Control.Monad
   import Control.Monad.State
@@ -9,9 +9,9 @@ module NASM_86_Compile where
   import Debug.Trace
 
   import AST
-  import NASM_86
-  import NASM_86_Natives
-  import NASM_86_Definitions
+  import CodeGeneration.NASM_86 as NASM
+  import CodeGeneration.NASM_86_Natives as Natives
+  import CodeGeneration.NASM_86_Definitions
   import ThreeAddressCode as TAC
   import Type
 
@@ -47,9 +47,9 @@ module NASM_86_Compile where
        return arg
 
   inputToArg :: Input -> NASM_86_Compiled Arg
-  inputToArg input@(TAC.Literal (IntValue i)) = withInputAddedToMap input $ NASM_86.Literal i
+  inputToArg input@(TAC.Literal (IntValue i)) = withInputAddedToMap input $ NASM.Literal i
   inputToArg input@(TAC.Literal (CharValue c)) =
-    withInputAddedToMap input . NASM_86.Literal . toInteger $ ord c
+    withInputAddedToMap input . NASM.Literal . toInteger $ ord c
   inputToArg input@(TAC.InAddr loc) =
     do memRef <- locToMemoryRef loc
        withInputAddedToMap input $ Memory memRef
@@ -61,12 +61,12 @@ module NASM_86_Compile where
        withOutputAddedToMap output $ Memory memRef -- (trace ("called locToMemoryRef in outputToArg with result " ++ (show memRef)) memRef)
 
   clearArg :: Arg -> Operations
-  clearArg NASM_86.Literal{} = []
-  clearArg NASM_86.LiteralWithString{} = []
-  clearArg NASM_86.AssemblyGlobalVariable{} = []
-  clearArg mem@Memory{} = [MovOp mem $ NASM_86.Literal 0] -- add size
+  clearArg NASM.Literal{} = []
+  clearArg NASM.LiteralWithString{} = []
+  clearArg NASM.AssemblyGlobalVariable{} = []
+  clearArg mem@Memory{} = [MovOp mem $ NASM.Literal 0] -- add size
   clearArg reg@Register{} = [XorOp reg reg]
-  clearArg reg@DerefRegister{} = [MovOp reg $ NASM_86.Literal 0] -- add size
+  clearArg reg@DerefRegister{} = [MovOp reg $ NASM.Literal 0] -- add size
 
   -- castMemoryRef :: (MemoryReference, SizeEnum) -> (MemoryReference, SizeEnum) -> Operations
   -- castMemoryRef (inMem@(Memory _), inSize) (outMem@(Memory _), outSize) =
@@ -135,7 +135,7 @@ module NASM_86_Compile where
   makeConditionalJump :: Input -> Marker -> (Label -> Operation) -> NASM_86_Compiled Operations
   makeConditionalJump in1 (Marker loc) create =
     do arg1 <- inputToArg in1
-       return [CmpOp arg1 $ NASM_86.Literal 0, create $ LabelId conditionalLabelName loc]
+       return [CmpOp arg1 $ NASM.Literal 0, create $ LabelId conditionalLabelName loc]
 
   makeComparisonLabel :: Integer -> Label
   makeComparisonLabel id = LabelId "cmp" id
@@ -155,15 +155,15 @@ module NASM_86_Compile where
        -- Do the conditional jump
        fromOps [makeJmp label1]
        -- Comparison was false: move 0 to out
-       fromOps [MovOp out' $ NASM_86.Literal 0, JmpOp label2]
+       fromOps [MovOp out' $ NASM.Literal 0, JmpOp label2]
        -- Comparison was true: move 1 to out
-       fromOps [LblOp label1, MovOp out' $ NASM_86.Literal 1, LblOp label2]
+       fromOps [LblOp label1, MovOp out' $ NASM.Literal 1, LblOp label2]
 
   makeRemoveParsOp :: Integer -> Operations
   makeRemoveParsOp 0 = []
   makeRemoveParsOp n =
     let argsSize = n * dwordSize
-    in [AddOp sp $ NASM_86.Literal argsSize]
+    in [AddOp sp $ NASM.Literal argsSize]
 
 
   -- al & bl -> ax ?
@@ -239,7 +239,7 @@ module NASM_86_Compile where
   compileTAC (PrtCode n) = 
     do fromOps . PushOp $ AssemblyGlobalVariable "printf_int_format"
        fromOps $ CallOp "printf"
-       fromOps $ AddOp (Register ESP) $ NASM_86.Literal 8 -- hardcoded: shouldn't assume 8 bytes have been pushed
+       fromOps $ AddOp (Register ESP) $ NASM.Literal 8 -- hardcoded: shouldn't assume 8 bytes have been pushed
   compileTAC Rt0Code =
     let functionExitOps = [MovOp sp bp, PopOp ebx, PopOp bp]
     in fromOps functionExitOps >> fromOps RetOp
@@ -309,7 +309,7 @@ module NASM_86_Compile where
        let typeSize = typeToInteger in2Type
        fromOps $ saving [EAX, EBX]
                         ((XorOp eax eax) :
-                         (makeMovOp ax arg1 SizeWord) ++ (makeMovOp bx (NASM_86.Literal typeSize) SizeWord) ++
+                         (makeMovOp ax arg1 SizeWord) ++ (makeMovOp bx (NASM.Literal typeSize) SizeWord) ++
                          ([MulOp bx, AddOp eax arg2] ++ (makeMovOp out' eax SizeDoubleWord)))
 
   -- Machine operations
@@ -320,9 +320,9 @@ module NASM_86_Compile where
        fromOps $ makeMovOp out' arg1 size
   compileTAC ExtCode =
     fromOps [
-             MovOp (Register EBX) $ NASM_86.Literal 0,
-             MovOp (Register EAX) $ NASM_86.Literal 1,
-             IntOp $ NASM_86.LiteralWithString "0x80"
+             MovOp (Register EBX) $ NASM.Literal 0,
+             MovOp (Register EAX) $ NASM.Literal 1,
+             IntOp $ NASM.LiteralWithString "0x80"
              ]
   -- compileTAC code = trace ("Unsupported: " ++ show code) (return ())
 
@@ -338,7 +338,7 @@ module NASM_86_Compile where
     let parsList = [0 .. pars - 1]
         frameSize = calculateFrameSize localAddresses
         functionPreludeOps = [StartprocOp name]
-        functionEnterOps = [PushOp bp, PushOp ebx, MovOp bp sp, SubOp sp $ NASM_86.Literal frameSize]
+        functionEnterOps = [PushOp bp, PushOp ebx, MovOp bp sp, SubOp sp $ NASM.Literal frameSize]
         functionExitludeOps = [EndprocOp name]
     in do fromOps functionPreludeOps
           fromOps functionEnterOps
@@ -388,17 +388,17 @@ module NASM_86_Compile where
   globalAddressToName addr = "global_" ++ show addr
 
   argToString :: Arg -> String
-  argToString (NASM_86.Literal i) = show i
-  argToString (NASM_86.LiteralWithString s) = s
-  argToString (NASM_86.AssemblyGlobalVariable name) = name
+  argToString (NASM.Literal i) = show i
+  argToString (NASM.LiteralWithString s) = s
+  argToString (NASM.AssemblyGlobalVariable name) = name
   argToString (Register reg) = regToString reg
-  argToString (Memory (NASM_86.Parameter i size)) = argToString (Memory $ Indirect i EBP size)
+  argToString (Memory (NASM.Parameter i size)) = argToString (Memory $ Indirect i EBP size)
   argToString (Memory (Indirect i reg size)) =
     let regName = regToString reg
     in if i < 0
        then (sizeEnumToString size) ++ " [ " ++ regName ++ " - " ++ (show $ abs i) ++ " ]"
        else (sizeEnumToString size) ++ " [ " ++ regName ++ " + " ++ show i ++ " ]"
-  argToString (Memory (NASM_86.Global addr size)) = 
+  argToString (Memory (NASM.Global addr size)) =
     (sizeEnumToString size) ++ "[ " ++ globalAddressToName addr ++ " ]"
   argToString (DerefRegister reg size) =
     (sizeEnumToString size) ++ " [ " ++ regToString reg ++ " ]"
@@ -469,14 +469,14 @@ module NASM_86_Compile where
   operationToString' (XorOp arg1 arg2)            = "xor\t\t" ++ argToString arg1 ++ ", " ++ argToString arg2
   operationToString' (CmpOp arg1 arg2)            = "cmp\t\t" ++ argToString arg1 ++ ", " ++ argToString arg2
   operationToString' (DivOp arg1)                 = "div\t\t" ++ argToString arg1
-  operationToString' (NASM_86.IncOp arg1)         = "inc\t\t" ++ argToString arg1
-  operationToString' (NASM_86.DecOp arg1)         = "dec\t\t" ++ argToString arg1
-  operationToString' (NASM_86.Comment comment)    = "; " ++ comment
+  operationToString' (NASM.IncOp arg1)         = "inc\t\t" ++ argToString arg1
+  operationToString' (NASM.DecOp arg1)         = "dec\t\t" ++ argToString arg1
+  operationToString' (NASM.Comment comment)    = "; " ++ comment
 
-  operationToString' (NASM_86.StartSegment segment) = segmentToString segment
-  operationToString' (NASM_86.GlobalFunctionDeclaration name) = "global " ++ name
-  operationToString' (NASM_86.ExternFunctionDeclaration name) = "extern " ++ name
-  operationToString' (NASM_86.LiteralString name string) = name ++ "\t\tdb\t\t" ++ string
+  operationToString' (NASM.StartSegment segment) = segmentToString segment
+  operationToString' (NASM.GlobalFunctionDeclaration name) = "global " ++ name
+  operationToString' (NASM.ExternFunctionDeclaration name) = "extern " ++ name
+  operationToString' (NASM.LiteralString name string) = name ++ "\t\tdb\t\t" ++ string
 
 
   operationsToString :: Operations -> String
@@ -509,7 +509,7 @@ module NASM_86_Compile where
           "\n\nsection .data\n\n" ++
           (operationsToString $ defaultDataSegment file) ++
           "\n\n" ++
-          (globalVarDefinitionsToString $ NASM_86_Compile.compiledGlobalVarDefinitions file)
+          (globalVarDefinitionsToString $ compiledGlobalVarDefinitions file)
         textSegmentString =
           "\n\nsection .text\n\n" ++
           (operationsToString $ defaultTextSegment file)
@@ -534,5 +534,5 @@ module NASM_86_Compile where
     let (_, state) = newCompiled (do mapM (\funTAC -> compileFunTAC funTAC) functions
                                      maybe (return ()) (\v -> compileFunTAC v) main)
         globalVarDefinitions = map compileGlobalVarTAC globals
-        file = CompiledFile NASM_86_Natives.textSegment NASM_86_Natives.dataSegment globalVarDefinitions $ nasmOps state
+        file = CompiledFile Natives.textSegment Natives.dataSegment globalVarDefinitions $ nasmOps state
     in compiledFileToString (nasmInputToArgs state) (nasmOutputToArgs state) file

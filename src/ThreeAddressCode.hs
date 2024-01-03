@@ -353,7 +353,7 @@ module ThreeAddressCode where
        addTACs $ (map ArgCode inputAddresses)
 
 
-  lookupInput :: Name -> TACState TACLocation -- TODO should produce an error if name cannot be found
+  lookupInput :: Name -> TACState TACLocation
   lookupInput name =
     do state <- get
        case Environment.lookup name $ locEnv state of
@@ -377,6 +377,13 @@ module ThreeAddressCode where
        lexpAddr <- expToTACs . LeftExp lexp $ getLExpT lexp
        outAddr <- incExps typ
        addTAC $ ParCode (InAddr expAddr) (InAddr lexpAddr) $ OutAddr outAddr
+       return outAddr
+  pexpToTACs (AddressExp lexp typ) =
+    do inAddr <- expToTACs . LeftExp lexp $ getLExpT lexp
+       let inAddr' = TACLocationPointsTo inAddr
+       outAddr <- incExps typ
+       let tac = AdrCode (InAddr inAddr') $ OutAddr outAddr
+       addTAC tac
        return outAddr
 
   -- assignOpStmtToTACS :: Statement Type -> CompiledStm
@@ -538,13 +545,17 @@ module ThreeAddressCode where
        addTAC retTac
   -- stmtToTacs _ = return ()
 
+
+
   addDeclarations :: (Type -> TACState TACLocation) -> (Declarations Type) -> TACState ()
   addDeclarations inc decls =
     do mapM (\tuple ->
               do let (name, typ) = tuple
                  address <- inc typ
                  state <- get
-                 insertIntoEnv name address)
+                 case typ of
+                   (ArrayType _ _) -> insertIntoEnv name $ TACLocationPointsTo address
+                   _ -> insertIntoEnv name address)
             (map (\(VarDeclaration typ name _) -> (name, typ)) decls)
        return ()
 

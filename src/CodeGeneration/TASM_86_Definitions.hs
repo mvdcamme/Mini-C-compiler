@@ -1,11 +1,11 @@
-module TASM_86_Definitions where
+module CodeGeneration.TASM_86_Definitions where
 
   import Control.Monad.State
   import Data.Map hiding (map)
   import Debug.Trace
 
   import ThreeAddressCode as TAC
-  import TASM_86
+  import CodeGeneration.TASM_86
 
   class ToOperation t where
     toOperation :: t -> Operation

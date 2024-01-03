@@ -1,4 +1,4 @@
-module TASM_86 where
+module CodeGeneration.TASM_86 where
 
   import Data.Char
   import Data.List
