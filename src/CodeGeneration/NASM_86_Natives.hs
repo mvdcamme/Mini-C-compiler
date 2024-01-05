@@ -12,7 +12,8 @@ module CodeGeneration.NASM_86_Natives where
   textSegment = -- Read-only segment
     [
       GlobalFunctionDeclaration "main",
-      ExternFunctionDeclaration "printf"
+      ExternFunctionDeclaration "printf",
+      ExternFunctionDeclaration "exit"
     ]
 
   nativeFunctions :: Operations

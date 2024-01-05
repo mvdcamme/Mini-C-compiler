@@ -252,9 +252,9 @@ module CodeGeneration.NASM_86_Compile where
        fromOps functionExitOps
        fromOps RetOp
   -- Assignments
-  compileTAC (AsnCode in1 (OutAddr (TACLocationPointsTo out))) =
+  compileTAC (AsdCode in1 out) =
     do arg1 <- inputToArg in1
-       out' <- outputToArg $ OutAddr out
+       out' <- outputToArg out
        let inSize = typeToSize $ getType in1
        let outSize = typeToSize $ getType out
        let eaxOfSize = getRegOfSize EAX outSize
@@ -269,15 +269,6 @@ module CodeGeneration.NASM_86_Compile where
        let size = typeToSize $ getType out
        fromOps $ makeMovOp out' arg1 size
   -- Casting
-  compileTAC (CstCode in1 (OutAddr (TACLocationPointsTo out))) =
-    do arg1 <- inputToArg in1
-       out' <- outputToArg $ OutAddr out
-       let size = typeToSize $ getType out
-       let eaxOfSize = getRegOfSize EAX size
-       let ebxOfSize = getRegOfSize EBX size
-       fromOps $ saving [eaxOfSize, ebxOfSize]
-                        [MovOp (Register eaxOfSize) out', MovOp (Register ebxOfSize) arg1,
-                         MovOp (DerefRegister eaxOfSize size) $ Register ebxOfSize]
   compileTAC (CstCode in1 out) =
     do arg1 <- inputToArg in1
        out' <- outputToArg out
@@ -285,8 +276,8 @@ module CodeGeneration.NASM_86_Compile where
        let outSize = typeToSize $ getType out
        fromOps $ doCstCode (arg1, inSize) (out', outSize)
   -- Pointers and addresses
-  compileTAC (AdrCode (InAddr (TACLocationPointsTo in1)) out) =
-    do arg1 <- inputToArg $ InAddr in1
+  compileTAC (AdrCode in1 out) =
+    do arg1 <- inputToArg in1
        out' <- outputToArg out
        let size = typeToSize $ getType out
        let eaxOfSize = getRegOfSize EAX size

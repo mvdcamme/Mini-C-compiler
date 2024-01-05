@@ -185,10 +185,6 @@ module TypeChecking where
           PointerType pointedTo -> return (PointerType pointedTo, PointerExp tLexp tExp $ PointerType pointedTo)
           ArrayType _ pointedTo -> return (PointerType pointedTo, PointerExp tLexp tExp $ PointerType pointedTo)
           _ -> error $ printf "Expression %s is not a pointer type" (show tLexp)
-  typeCheckPExp (AddressExp lexp _) =
-    do (lexpType, tLexp) <- typeCheckLExp lexp
-       let addrType = PointerType lexpType
-       return (addrType, AddressExp tLexp addrType)
 
   typeCheckLExp :: UntypedLExp -> TypedLExp
   typeCheckLExp (ArrayRefExp array index _) = typeOfArrayRefExp array index

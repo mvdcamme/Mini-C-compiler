@@ -42,7 +42,6 @@ module AST where
                                     deriving (Show, Eq)
 
     data PointerExpression t        = PointerExp (LeftExpression t) (Expression t) t             -- Pointer arithmetic: (lexp + exp), e.g., p + 10
-                                    | AddressExp (LeftExpression t) t
                                     deriving (Show, Eq)
 
     data Expression t               = LeftExp (LeftExpression t) t

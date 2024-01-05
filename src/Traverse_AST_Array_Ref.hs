@@ -82,8 +82,6 @@ module Traverse_AST_Array_Ref where
   walkPExp :: ASTTransformer t -> PointerExpression t -> PointerExpression t
   walkPExp transformer (PointerExp lexp exp t) =
     transformPExp transformer $ PointerExp (walkLExp transformer lexp) (walkExp transformer exp) t
-  walkPExp transformer (AddressExp lexp t) =
-    transformPExp transformer $ AddressExp (walkLExp transformer lexp) t
 
   walkStatement :: ASTTransformer t -> Statement t -> Statement t
   walkStatement transformer (AssignStmt lexp exp t) =

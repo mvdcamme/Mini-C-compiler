@@ -19,8 +19,6 @@ module ThreeAddressCode where
   data TACLocation          = Global Address Type
                               | Local Address Type
                               | Parameter Address Type
-                              | TACLocationPointsTo TACLocation
-                              | TACLocationPointsToIndexed TACLocation TACLocation
                               deriving (Show, Eq)
 
   instance Ord AtomicValue where -- arbitrarily, CharValue < IntValue
@@ -34,13 +32,6 @@ module ThreeAddressCode where
     compare (Local _ _) _ = LT
     compare (Parameter adr1 _) (Parameter adr2 _) = compare adr1 adr2
     compare (Parameter _ _) _ = LT
-    compare (TACLocationPointsTo adr1) (TACLocationPointsTo adr2) = compare adr1 adr2
-    compare (TACLocationPointsTo _) _ = LT
-    compare (TACLocationPointsToIndexed x1 y1) (TACLocationPointsToIndexed x2 y2) =
-      let firstComparison = compare x1 x2
-      in if firstComparison == EQ
-         then compare y1 y2
-         else firstComparison
 
 
   data Locations            = Locations { globals :: Address
@@ -99,6 +90,7 @@ module ThreeAddressCode where
                               -- | RvpCode Integer                    -- Remove Integers pars from the stack after calling a function
                               -- Assignments
                               | AsnCode Input Output                  -- Assign: should also have an output if the assignment itself produces a value
+                              | AsdCode Input Output                  -- Assign to a dereferenced pointer expression: *(p + x) = 1
                               -- Casting
                               | CstCode Input Output                  -- Cast: input type to output type
                               -- Pointers
@@ -169,8 +161,6 @@ module ThreeAddressCode where
     getType (Global _ typ) = typ
     getType (Local _ typ) = typ
     getType (Parameter _ typ) = typ
-    getType (TACLocationPointsTo loc) = PointerType $ getType loc
-    getType (TACLocationPointsToIndexed loc _) = PointerType $ getType loc
 
   instance HasType Input where
     getType Literal{} = Atom lowestAtomicType
@@ -378,13 +368,6 @@ module ThreeAddressCode where
        outAddr <- incExps typ
        addTAC $ ParCode (InAddr expAddr) (InAddr lexpAddr) $ OutAddr outAddr
        return outAddr
-  pexpToTACs (AddressExp lexp typ) =
-    do inAddr <- expToTACs . LeftExp lexp $ getLExpT lexp
-       let inAddr' = TACLocationPointsTo inAddr
-       outAddr <- incExps typ
-       let tac = AdrCode (InAddr inAddr') $ OutAddr outAddr
-       addTAC tac
-       return outAddr
 
   -- assignOpStmtToTACS :: Statement Type -> CompiledStm
   -- assignOpStmtToTACS (AssignOpStmt op (VariableRefExp name typ) exp _) =
@@ -404,19 +387,18 @@ module ThreeAddressCode where
   expToTACs atomic@(QCharExp char (Atom typ)) = atomicToTACs (CharValue char) typ
   expToTACs (AddressOf lexp typ) =
     do inAddr <- expToTACs . LeftExp lexp $ getLExpT lexp
-       let inAddr' = TACLocationPointsTo inAddr
        outAddr <- incExps typ
-       let tac = AdrCode (InAddr inAddr') $ OutAddr outAddr
+       let tac = AdrCode (InAddr inAddr) $ OutAddr outAddr
        addTAC tac
        return outAddr
   expToTACs (BinaryExp op left right typ) = binaryExpToTACs left right op typ
   expToTACs (LeftExp (VariableRefExp name _) typ) =
     do address <- lookupInput name
        return address
-  expToTACs (LeftExp (ArrayRefExp arrExp idxExp _) typ) =
-    do arrAddr <- expToTACs . LeftExp arrExp $ getLExpT arrExp
-       idxAddr <- expToTACs idxExp
-       return $ TACLocationPointsToIndexed arrAddr idxAddr
+--  expToTACs (LeftExp (ArrayRefExp arrExp idxExp _) typ) = -- Should have been turned into a DerefExp after transforming the AST
+--    do arrAddr <- expToTACs . LeftExp arrExp $ getLExpT arrExp
+--       idxAddr <- expToTACs idxExp
+--       return $ TACLocationPointsToIndexed arrAddr idxAddr
   expToTACs (LeftExp (DerefExp pexp _) typ) =
     do inAddr <- pexpToTACs pexp
        outAddr <- incExps typ
@@ -521,7 +503,7 @@ module ThreeAddressCode where
        -- Should do a cast is the types don't match
        -- castArgToAddress inAddr typ (return $ TACLocationPointsTo writeAddr)
        -- return ()
-       let asnTac = AsnCode (InAddr inAddr) . OutAddr $ TACLocationPointsTo writeAddr
+       let asnTac = AsdCode (InAddr inAddr) $ OutAddr writeAddr
        addTAC asnTac
   -- stmtToTacs (AssignOpStmt op (VariableRefExp name typ) exp _) =
   --   do inAddr <- expToTACs exp
@@ -554,8 +536,13 @@ module ThreeAddressCode where
                  address <- inc typ
                  state <- get
                  case typ of
-                   (ArrayType _ _) -> insertIntoEnv name $ TACLocationPointsTo address
-                   _ -> insertIntoEnv name address)
+                   (ArrayType length elementType) ->
+                    do addressOfPointerExp <- inc $ PointerType elementType
+                       addTAC . AdrCode (InAddr address) $ OutAddr addressOfPointerExp
+                       insertIntoEnv name addressOfPointerExp
+                    -- add extra declaration of type (PointsTo elementType)
+                   _ -> insertIntoEnv name address
+                 )
             (map (\(VarDeclaration typ name _) -> (name, typ)) decls)
        return ()
 
