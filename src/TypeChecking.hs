@@ -122,7 +122,21 @@ module TypeChecking where
                return (binOpType, BinaryExp binOp tExp1 tExp2 binOpType)
        else error $ printf "%s expected integral types, received a %s and a %s instead" (show binOp) (show tExp1) $ show tExp2
 
+  typeOfBinaryIntegralOrPointerExp :: UntypedExp -> UntypedExp -> BinOperator -> TypedExp
+  typeOfBinaryIntegralOrPointerExp exp1 exp2 binOp =
+    do (exp1Type, tExp1) <- typeCheckExp exp1
+       (exp2Type, tExp2) <- typeCheckExp exp2
+       exp1IsIntegral <- isIntegralType exp1Type
+       let exp1IsPointer = isPointerType exp1Type
+       let cond1 = exp1IsIntegral || exp1IsPointer
+       cond2 <- isIntegralType exp2Type
+       if cond1 && cond2
+       then return (exp1Type, BinaryExp binOp tExp1 tExp2 exp1Type)
+       else error $ printf "%s expected integral or pointer types, received a %s and a %s instead" (show binOp) (show tExp1) $ show tExp2
+
   typeOfBinaryExp :: UntypedExp -> UntypedExp -> BinOperator -> TypedExp
+  typeOfBinaryExp exp1 exp2 PlusOp = typeOfBinaryIntegralOrPointerExp exp1 exp2 PlusOp
+  typeOfBinaryExp exp1 exp2 MinusOp = typeOfBinaryIntegralOrPointerExp exp1 exp2 MinusOp
   typeOfBinaryExp exp1 exp2 binOp = typeOfIntegralBinOp binOp exp1 exp2 isIntegralType
 
   expsMatchTypes :: UntypedExps -> [Type] -> TypeChecked [(Expression Type, Type)]
