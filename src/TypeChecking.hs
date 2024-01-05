@@ -44,10 +44,10 @@ module TypeChecking where
         initEnv = Environment.insert "print" (ArrowType [Atom IntType] $ Atom VoidType) emptyEnv
     in TypeCheckedState initEnv Nothing
 
-  isIntegralType :: Type -> TypeChecked Bool
-  isIntegralType (Atom IntType) = return True
-  isIntegralType (Atom CharType) = return True
-  isIntegralType _ = return False
+  isIntegralType :: Type -> Bool
+  isIntegralType (Atom IntType) = True
+  isIntegralType (Atom CharType) = True
+  isIntegralType _ = False
 
   getAtomicTypeType :: Type -> TypeChecked AtomicType
   getAtomicTypeType (Atom CharType) = return CharType
@@ -103,18 +103,18 @@ module TypeChecking where
   typeOfIntegralUnOp :: UnOperator -> UntypedExp -> TypedExp
   typeOfIntegralUnOp unOp exp =
     do (expType, tExp) <- typeCheckExp exp
-       cond <- isIntegralType expType
+       let cond = isIntegralType expType
        let unOpType = expType
        if cond
        then return $ (unOpType, UnaryExp unOp tExp unOpType)
        else error $ printf "%s expected integral type, received a %s instead" (show unOp) $ show tExp
 
-  typeOfIntegralBinOp :: BinOperator -> UntypedExp -> UntypedExp -> (Type -> TypeChecked Bool) -> TypedExp
-  typeOfIntegralBinOp binOp exp1 exp2 pred =
+  typeOfIntegralBinOp :: BinOperator -> UntypedExp -> UntypedExp -> TypedExp
+  typeOfIntegralBinOp binOp exp1 exp2 =
     do (exp1Type, tExp1) <- typeCheckExp exp1
        (exp2Type, tExp2) <- typeCheckExp exp2
-       cond1 <- isIntegralType exp1Type
-       cond2 <- isIntegralType exp2Type
+       let cond1 = isIntegralType exp1Type
+       let cond2 = isIntegralType exp2Type
        if cond1 && cond2
        then do atom1Type <- getAtomicTypeType exp1Type
                atom2Type <- getAtomicTypeType exp2Type
@@ -126,10 +126,8 @@ module TypeChecking where
   typeOfBinaryIntegralOrPointerExp exp1 exp2 binOp =
     do (exp1Type, tExp1) <- typeCheckExp exp1
        (exp2Type, tExp2) <- typeCheckExp exp2
-       exp1IsIntegral <- isIntegralType exp1Type
-       let exp1IsPointer = isPointerType exp1Type
-       let cond1 = exp1IsIntegral || exp1IsPointer
-       cond2 <- isIntegralType exp2Type
+       let cond1 = isIntegralType exp1Type || isPointerType exp1Type
+       let cond2 = isIntegralType exp2Type
        if cond1 && cond2
        then return (exp1Type, BinaryExp binOp tExp1 tExp2 exp1Type)
        else error $ printf "%s expected integral or pointer types, received a %s and a %s instead" (show binOp) (show tExp1) $ show tExp2
@@ -137,7 +135,7 @@ module TypeChecking where
   typeOfBinaryExp :: UntypedExp -> UntypedExp -> BinOperator -> TypedExp
   typeOfBinaryExp exp1 exp2 PlusOp = typeOfBinaryIntegralOrPointerExp exp1 exp2 PlusOp
   typeOfBinaryExp exp1 exp2 MinusOp = typeOfBinaryIntegralOrPointerExp exp1 exp2 MinusOp
-  typeOfBinaryExp exp1 exp2 binOp = typeOfIntegralBinOp binOp exp1 exp2 isIntegralType
+  typeOfBinaryExp exp1 exp2 binOp = typeOfIntegralBinOp binOp exp1 exp2
 
   expsMatchTypes :: UntypedExps -> [Type] -> TypeChecked [(Expression Type, Type)]
   expsMatchTypes exps types =
@@ -174,7 +172,7 @@ module TypeChecking where
   typeOfUnaryModifyingExp :: UntypedLExp -> UnModifyingOperator -> TypedExp
   typeOfUnaryModifyingExp lexp unOp =
     do (expType, tLexp) <- typeCheckLExp lexp
-       cond <- isIntegralType expType
+       let cond = isIntegralType expType
        let unOpType = expType
        if cond
        then return $ (unOpType, UnaryModifyingExp unOp tLexp unOpType)
@@ -192,7 +190,7 @@ module TypeChecking where
   typeCheckPExp (PointerExp lexp exp _) =
     do (lexpType, tLexp) <- typeCheckLExp lexp
        (expType, tExp) <- typeCheckExp exp
-       cond <- isIntegralType expType
+       let cond = isIntegralType expType
        if (not cond)
        then error $ printf "Expression %s should be an integral type" (show tExp)
        else case lexpType of
@@ -246,7 +244,7 @@ module TypeChecking where
       ArrayRefExp array idx _ -> do (idxType, tIdx) <- typeCheckExp idx
                                     (expType, tExp) <- typeCheckExp exp
                                     (arrayType, tArrayExp) <- typeCheckLExp array
-                                    isIntegral <- isIntegralType idxType
+                                    let isIntegral = isIntegralType idxType
                                     if (not isIntegral)
                                     then error $ printf "Incorrect type for the index-expression: expected Integral type, but is %s" $ show idxType
                                     else case arrayType of
@@ -273,7 +271,7 @@ module TypeChecking where
   typeCheckStatement (ForStmt init m1 pred m2 inc m3 body m4 _) =
     do (_, tInit) <- typeCheckStatement init
        (predType, tPred) <- typeCheckExp pred
-       isIntegral <- isIntegralType predType
+       let isIntegral = isIntegralType predType
        if isIntegral
        then return ()
        else error $ printf "Expression %s is not an integral type" (show pred)
