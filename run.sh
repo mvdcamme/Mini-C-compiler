@@ -7,7 +7,8 @@ elif [[ "$OSTYPE" == "darwin"* ]]; then
 	COLOR_ESCAPE_CHAR=x1B
 fi
 
-COMPILER=output/Main
+OUTPUT_FOLDER=output
+COMPILER=$OUTPUT_FOLDER/build/tiny-c-compiler/tiny-c-compiler
 INPUT_FILE=${1:-./src/test.c}
 OUTPUT_FILE=${2:-.output/output.asm}
 KEEP_SILENT=${3:-"--verbose"}
