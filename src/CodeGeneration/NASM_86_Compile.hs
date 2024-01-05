@@ -309,13 +309,7 @@ module CodeGeneration.NASM_86_Compile where
        out' <- outputToArg out
        let size = typeToSize $ getType out
        fromOps $ makeMovOp out' arg1 size
-  compileTAC ExtCode =
-    fromOps [
-             MovOp (Register EBX) $ NASM.Literal 0,
-             MovOp (Register EAX) $ NASM.Literal 1,
-             IntOp $ NASM.LiteralWithString "0x80"
-             ]
-  -- compileTAC code = trace ("Unsupported: " ++ show code) (return ())
+  compileTAC ExtCode = fromOps $ CallOp "exit"
 
   calculateFrameSize :: LocalAddresses -> Integer
   calculateFrameSize localAddresses =
