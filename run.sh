@@ -8,7 +8,7 @@ elif [[ "$OSTYPE" == "darwin"* ]]; then
 fi
 
 OUTPUT_FOLDER=output
-COMPILER=$OUTPUT_FOLDER/build/tiny-c-compiler/tiny-c-compiler
+COMPILER=$OUTPUT_FOLDER/build/mini-c-compiler/mini-c-compiler
 INPUT_FILE=${1:-./src/test.c}
 OUTPUT_FILE=${2:-.output/output.asm}
 KEEP_SILENT=${3:-"--verbose"}

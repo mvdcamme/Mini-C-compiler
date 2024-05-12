@@ -1,8 +1,8 @@
 #!/bin/bash
 
-C_DISK="/Users/mvdcamme/Projects/Language_Implementations/Tiny-C-compiler/ASMBox/c_disk"
+C_DISK="/Users/mvdcamme/Projects/Language_Implementations/Mini-C-compiler/ASMBox/c_disk"
 MOUNT_C_DISK="mount C $C_DISK"
-Y_MOUNT="imgmount Y /Users/mvdcamme/Projects/Language_Implementations/Tiny-C-compiler/ASMBox/dosbox/asm_dev_disk.iso -t iso"
+Y_MOUNT="imgmount Y /Users/mvdcamme/Projects/Language_Implementations/Mini-C-compiler/ASMBox/dosbox/asm_dev_disk.iso -t iso"
 PATHS="SET PATH=Y:\DOS;Y:\UTILS\WATCOM\BINW;Y:\UTILS\TASM\BIN;Y:\UTILS\MASM611\BIN;Y:\UTILS\DN;%PATH%"
 WATCOM="SET WATCOM=Y:\UTILS\WATCOM"
 

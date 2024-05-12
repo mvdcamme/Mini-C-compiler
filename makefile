@@ -1,6 +1,6 @@
 SOURCE_FOLDER = src
 OUTPUT_FOLDER = output
-OUTPUT_FILE = $(OUTPUT_FOLDER)/build/tiny-c-compiler/tiny-c-compiler
+OUTPUT_FILE = $(OUTPUT_FOLDER)/build/mini-c-compiler/mini-c-compiler
 INPUT_FILE = $(SOURCE_FOLDER)/test.c
 OUTPUT_ASM_FILE = $(OUTPUT_FOLDER)/output.asm
 OUTPUT_ASM_DESTINATION = ./ASMBox/c_disk/EXERCISE/test.asm
