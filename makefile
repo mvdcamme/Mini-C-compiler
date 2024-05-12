@@ -12,6 +12,6 @@ all:
 	# rm -f $(SOURCE_FOLDER)/*.hi $(SOURCE_FOLDER)/*.o
 	happy $(SOURCE_FOLDER)/Main.y -o $(HAPPY_OUTPUT_FILE)
 	cabal build --builddir=$(OUTPUT_FOLDER)
-	./$(OUTPUT_FILE) $(INPUT_FILE) $(OUTPUT_ASM_FILE) --verbose 
+	./$(OUTPUT_FILE) $(INPUT_FILE) $(OUTPUT_ASM_FILE)
 	cp $(OUTPUT_ASM_FILE) $(OUTPUT_ASM_DESTINATION)
 	

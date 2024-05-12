@@ -74,8 +74,8 @@ module CodeGeneration.NASM_86_Definitions where
        (ref, mp') <- locToMemoryRef' mp address currentLocal (state { nasmCurrentLocal = (nasmCurrentLocal state) - typeSizeInt }) -- trace "Adding new local" ((nasmCurrentLocal state) + typeSize) })
        state' <- get
        put state' { nasmLocalsMap = mp' } -- trace ("Local: mp' = " ++ (show mp')) mp' }
-       return $ Indirect (trace ("locToMemoryRef of Local " ++ show address ++ " " ++ show typ ++ " -> Indirect " ++ show ref ++ " EBP\nnasmCurrentLocal is now " ++ show (nasmCurrentLocal state'))
-                                ref) EBP typeSize
+       -- return $ Indirect (trace ("locToMemoryRef of Local " ++ show address ++ " " ++ show typ ++ " -> Indirect " ++ show ref ++ " EBP\nnasmCurrentLocal is now " ++ show (nasmCurrentLocal state')) ref) EBP typeSize
+       return $ Indirect ref EBP typeSize
   locToMemoryRef (TAC.Parameter address typ) =
     do state <- get
        let currentPar = nasmCurrentPar state
