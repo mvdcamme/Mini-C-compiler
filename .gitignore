@@ -6,4 +6,5 @@ Main.hs
 ASMBox
 output
 .idea
+src/.idea
 input/fixtures/*.asm
